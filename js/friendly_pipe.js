@@ -113,31 +113,40 @@ function findOriginalSource(node, slotIndex, depth = 0) {
         
         // Check if this node has the properties we're looking for (FriendlyPipeIn or FriendlyPipeEdit)
         if (currentNode.slotCount !== undefined && currentNode.slotNames !== undefined) {
+            console.log("[FriendlyPipe] findOriginalSource: Found source node:", currentNode.type, currentNode.id);
             return currentNode;
         }
         
         // Handle Subgraph nodes - need to enter the subgraph and find the graph/output
         if (currentNode.subgraph) {
+            console.log("[FriendlyPipe] findOriginalSource: Entering subgraph node, outputSlot:", currentSlot);
             const subgraph = currentNode.subgraph;
             const outputSlot = currentSlot;
             const subgraphNodes = subgraph._nodes || [];
+            console.log("[FriendlyPipe] findOriginalSource: Subgraph has", subgraphNodes.length, "nodes");
             
             // Find the graph/output node that corresponds to this output slot
             for (const innerNode of subgraphNodes) {
+                console.log("[FriendlyPipe] findOriginalSource: Checking inner node:", innerNode.type, innerNode.id);
                 if (innerNode.type === "graph/output" || innerNode.type === "GraphOutput") {
                     const outputIndex = innerNode.properties?.slot_index ?? 
                                         innerNode.properties?.index ?? 
                                         innerNode.slot_index ?? 0;
+                    console.log("[FriendlyPipe] findOriginalSource: graph/output node, outputIndex:", outputIndex, "looking for:", outputSlot);
                     if (outputIndex === outputSlot) {
                         // Found the matching graph/output, trace back from its input
                         const graphOutputInput = innerNode.inputs?.[0];
+                        console.log("[FriendlyPipe] findOriginalSource: graph/output input:", graphOutputInput);
                         if (graphOutputInput && graphOutputInput.link) {
                             const innerLink = subgraph.links[graphOutputInput.link];
+                            console.log("[FriendlyPipe] findOriginalSource: innerLink:", innerLink);
                             if (innerLink) {
                                 const innerSource = subgraph.getNodeById(innerLink.origin_id);
+                                console.log("[FriendlyPipe] findOriginalSource: innerSource:", innerSource?.type, innerSource?.id);
                                 if (innerSource) {
                                     // Recursively search inside the subgraph
                                     const result = findOriginalSource(innerSource, innerLink.origin_slot, depth + 1);
+                                    console.log("[FriendlyPipe] findOriginalSource: recursive result:", result?.type, result?.id);
                                     if (result) return result;
                                 }
                             }
@@ -146,6 +155,7 @@ function findOriginalSource(node, slotIndex, depth = 0) {
                     }
                 }
             }
+            console.log("[FriendlyPipe] findOriginalSource: No source found in subgraph");
             break;
         }
         
