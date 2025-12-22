@@ -126,6 +126,7 @@ comfyui-friendly-pipe/
 ├── any_type.py            # AnyType class for universal type compatibility
 ├── js/
 │   └── friendly_pipe.js   # Frontend JavaScript for dynamic UI
+├── pyproject.toml         # ComfyUI Manager metadata
 └── README.md
 ```
 
