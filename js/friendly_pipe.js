@@ -11,9 +11,11 @@ function isPassThroughNode(node) {
         return true;
     }
     
-    // Subgraph input/output nodes
+    // Subgraph input/output nodes (various possible type names)
     if (node.type === "graph/input" || 
-        node.type === "graph/output") {
+        node.type === "graph/output" ||
+        node.type === "GraphInput" ||
+        node.type === "GraphOutput") {
         return true;
     }
     
@@ -27,54 +29,102 @@ function isPassThroughNode(node) {
     return false;
 }
 
+// Helper to find the parent subgraph node when inside a subgraph
+function getParentSubgraphInfo(node) {
+    const graph = node.graph;
+    if (!graph) return null;
+    
+    // Try various ways to get the parent subgraph node
+    let parentNode = graph._subgraph_node || graph.parentNode || graph._parentNode;
+    let parentGraph = parentNode?.graph || app.graph;
+    
+    // If we're in a subgraph, the graph might have a reference to its container
+    if (!parentNode && graph._is_subgraph) {
+        // Search main graph for subgraph nodes containing this graph
+        for (const n of app.graph._nodes || []) {
+            if (n.subgraph === graph) {
+                parentNode = n;
+                parentGraph = app.graph;
+                break;
+            }
+        }
+    }
+    
+    if (parentNode) {
+        return { parentNode, parentGraph };
+    }
+    
+    return null;
+}
+
 // Helper function to traverse backwards through reroute/forwarding nodes to find the original source
-function findOriginalSource(node, slotIndex) {
+function findOriginalSource(node, slotIndex, depth = 0) {
+    // Prevent infinite recursion
+    if (depth > 50) return null;
+    
     const visited = new Set();
     let currentNode = node;
     let currentSlot = slotIndex;
     
     while (currentNode) {
+        const graph = currentNode.graph || app.graph;
+        
         // Prevent infinite loops
-        const nodeKey = `${currentNode.id}-${currentSlot}`;
+        const nodeKey = `${currentNode.id}-${currentSlot}-${graph?.id || 'main'}`;
         if (visited.has(nodeKey)) break;
         visited.add(nodeKey);
         
         // Check if this node has the properties we're looking for (FriendlyPipeIn or FriendlyPipeOut)
-        if (currentNode.slotCount !== undefined) {
+        if (currentNode.slotCount !== undefined && currentNode.slotNames !== undefined) {
             return currentNode;
         }
         
         // Handle graph/input nodes (subgraph boundary) - need to exit to parent graph
-        if (currentNode.type === "graph/input") {
-            // Get the parent subgraph node and the corresponding input slot
-            const parentGraph = currentNode.graph?._subgraph_node?.graph;
-            const parentNode = currentNode.graph?._subgraph_node;
-            if (parentNode && parentGraph) {
+        if (currentNode.type === "graph/input" || currentNode.type === "GraphInput") {
+            const parentInfo = getParentSubgraphInfo(currentNode);
+            if (parentInfo) {
+                const { parentNode, parentGraph } = parentInfo;
                 // Find which input slot on parent corresponds to this graph/input
-                const inputIndex = currentNode.properties?.slot_index ?? 0;
+                const inputIndex = currentNode.properties?.slot_index ?? 
+                                   currentNode.properties?.index ?? 
+                                   currentNode.slot_index ?? 0;
                 const parentInput = parentNode.inputs?.[inputIndex];
                 if (parentInput && parentInput.link) {
                     const link = parentGraph.links[parentInput.link];
                     if (link) {
-                        currentNode = parentGraph.getNodeById(link.origin_id);
-                        currentSlot = link.origin_slot;
-                        continue;
+                        const sourceNode = parentGraph.getNodeById(link.origin_id);
+                        if (sourceNode) {
+                            // Recursively search from parent graph
+                            const result = findOriginalSource(sourceNode, link.origin_slot, depth + 1);
+                            if (result) return result;
+                        }
                     }
                 }
             }
+            break;
         }
         
         // Check if this is a pass-through node
         if (isPassThroughNode(currentNode)) {
             const inputSlot = currentNode.inputs?.[0];
             if (inputSlot && inputSlot.link) {
-                const graph = currentNode.graph || app.graph;
                 const link = graph.links[inputSlot.link];
                 if (link) {
                     currentNode = graph.getNodeById(link.origin_id);
                     currentSlot = link.origin_slot;
                     continue;
                 }
+            }
+        }
+        
+        // Check if this node has an input link we can follow (for non-passthrough nodes)
+        const input = currentNode.inputs?.[currentSlot] || currentNode.inputs?.[0];
+        if (input && input.link) {
+            const link = graph.links[input.link];
+            if (link) {
+                currentNode = graph.getNodeById(link.origin_id);
+                currentSlot = link.origin_slot;
+                continue;
             }
         }
         
@@ -86,7 +136,10 @@ function findOriginalSource(node, slotIndex) {
 }
 
 // Helper function to traverse forwards through reroute/forwarding nodes to notify all connected outputs
-function notifyDownstreamNodes(node, slotIndex, visited = new Set()) {
+function notifyDownstreamNodes(node, slotIndex, visited = new Set(), depth = 0) {
+    // Prevent infinite recursion
+    if (depth > 50) return;
+    
     const graph = node.graph || app.graph;
     
     if (!node.outputs || !node.outputs[slotIndex] || !node.outputs[slotIndex].links) return;
@@ -109,32 +162,31 @@ function notifyDownstreamNodes(node, slotIndex, visited = new Set()) {
         }
         
         // Handle Subgraph nodes - enter the subgraph and notify from graph/input
-        if (targetNode.type === "graph/subgraph" || targetNode.subgraph) {
+        if (targetNode.subgraph) {
             const subgraph = targetNode.subgraph;
-            if (subgraph) {
-                // Find the graph/input node that corresponds to this input slot
-                const targetInputSlot = link.target_slot;
-                const subgraphNodes = subgraph._nodes || [];
-                for (const innerNode of subgraphNodes) {
-                    if (innerNode.type === "graph/input") {
-                        const inputIndex = innerNode.properties?.slot_index ?? 0;
-                        if (inputIndex === targetInputSlot) {
-                            // Continue traversal from this graph/input node
-                            notifyDownstreamNodes(innerNode, 0, visited);
-                            break;
-                        }
+            const targetInputSlot = link.target_slot;
+            const subgraphNodes = subgraph._nodes || [];
+            
+            for (const innerNode of subgraphNodes) {
+                // Find the graph/input that corresponds to this input slot
+                if (innerNode.type === "graph/input" || innerNode.type === "GraphInput") {
+                    const inputIndex = innerNode.properties?.slot_index ?? 
+                                       innerNode.properties?.index ?? 
+                                       innerNode.slot_index ?? 0;
+                    if (inputIndex === targetInputSlot) {
+                        notifyDownstreamNodes(innerNode, 0, visited, depth + 1);
                     }
-                    // Also directly check for FriendlyPipeOut nodes inside
-                    if (innerNode.syncWithSource) {
-                        innerNode.syncWithSource();
-                    }
+                }
+                // Also directly notify FriendlyPipeOut nodes inside
+                if (innerNode.syncWithSource) {
+                    innerNode.syncWithSource();
                 }
             }
         }
         
         // If target is a pass-through, continue traversing
         if (isPassThroughNode(targetNode) && targetNode.outputs) {
-            notifyDownstreamNodes(targetNode, 0, visited);
+            notifyDownstreamNodes(targetNode, 0, visited, depth + 1);
         }
     }
 }
@@ -487,6 +539,8 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
     };
     
     nodeType.prototype.syncWithSource = function() {
+        const graph = this.graph || app.graph;
+        
         if (!this.inputs || !this.inputs[0] || !this.inputs[0].link) {
             // No connection, reset to default
             this.updateFromSource(1, {}, {});
@@ -494,16 +548,16 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         }
         
         const linkId = this.inputs[0].link;
-        const link = app.graph.links[linkId];
+        const link = graph.links[linkId];
         if (!link) return;
         
-        const immediateSource = app.graph.getNodeById(link.origin_id);
+        const immediateSource = graph.getNodeById(link.origin_id);
         if (!immediateSource) return;
         
-        // Traverse through reroute nodes to find the original FriendlyPipeIn
-        const sourceNode = findOriginalSource(immediateSource, link.origin_slot) || immediateSource;
+        // Traverse through reroute/subgraph nodes to find the original FriendlyPipeIn
+        const sourceNode = findOriginalSource(immediateSource, link.origin_slot);
         
-        if (sourceNode.slotCount !== undefined) {
+        if (sourceNode && sourceNode.slotCount !== undefined) {
             // Make sure source has latest types
             if (sourceNode.updateSlotTypes) {
                 sourceNode.updateSlotTypes();
@@ -512,6 +566,16 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
                 sourceNode.slotCount, 
                 sourceNode.slotNames || {},
                 sourceNode.slotTypes || {}
+            );
+        } else if (immediateSource.slotCount !== undefined) {
+            // Fallback to immediate source if traversal failed
+            if (immediateSource.updateSlotTypes) {
+                immediateSource.updateSlotTypes();
+            }
+            this.updateFromSource(
+                immediateSource.slotCount, 
+                immediateSource.slotNames || {},
+                immediateSource.slotTypes || {}
             );
         }
     };
