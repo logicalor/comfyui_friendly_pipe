@@ -1,5 +1,42 @@
 import { app } from "../../scripts/app.js";
 
+// Helper function to find source through parent subgraph node
+function findSourceThroughParent(subgraphNode, inputSlotIndex, subgraph) {
+    console.log("[FriendlyPipe] findSourceThroughParent called");
+    console.log("[FriendlyPipe] subgraphNode:", subgraphNode);
+    console.log("[FriendlyPipe] subgraphNode.inputs:", subgraphNode?.inputs);
+    console.log("[FriendlyPipe] inputSlotIndex:", inputSlotIndex);
+    
+    if (!subgraphNode || !subgraphNode.inputs) return null;
+    
+    // The origin_slot from the link inside the subgraph should map to the parent's input
+    const parentInput = subgraphNode.inputs[inputSlotIndex];
+    console.log("[FriendlyPipe] parentInput:", parentInput);
+    
+    if (parentInput && parentInput.link) {
+        const parentGraph = subgraphNode.graph || app.graph;
+        const parentLink = parentGraph.links[parentInput.link];
+        console.log("[FriendlyPipe] parentLink:", parentLink);
+        
+        if (parentLink) {
+            // Recursively handle if parent is also in a subgraph
+            if (parentLink.origin_id < 0) {
+                // Parent connection also comes from a subgraph boundary
+                const grandparentNode = parentGraph._subgraph_node;
+                if (grandparentNode) {
+                    return findSourceThroughParent(grandparentNode, parentLink.origin_slot, parentGraph);
+                }
+            }
+            
+            const source = parentGraph.getNodeById(parentLink.origin_id);
+            console.log("[FriendlyPipe] Found source:", source);
+            return source;
+        }
+    }
+    
+    return null;
+}
+
 // Helper function to check if a node is a pass-through type
 function isPassThroughNode(node) {
     if (!node) return false;
@@ -569,32 +606,44 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         // Handle negative origin_id (subgraph input boundary)
         if (link.origin_id < 0) {
             console.log("[FriendlyPipe] Negative origin_id detected, this is a subgraph input");
-            // The input slot index is encoded in the negative ID: -1 = slot 0, -10 = slot 9, etc.
-            // Or it could be stored differently - let's find the parent subgraph
-            const subgraphNode = graph._subgraph_node;
-            console.log("[FriendlyPipe] subgraphNode:", subgraphNode);
+            console.log("[FriendlyPipe] graph._subgraph_node:", graph._subgraph_node);
+            console.log("[FriendlyPipe] graph.inputs:", graph.inputs);
+            console.log("[FriendlyPipe] graph._inputs:", graph._inputs);
+            console.log("[FriendlyPipe] graph.config:", graph.config);
+            console.log("[FriendlyPipe] All graph keys:", Object.keys(graph));
             
-            if (subgraphNode) {
-                // Find which input slot this corresponds to
-                // In LiteGraph, negative IDs map to input slots: -1 is first input, -2 is second, etc.
-                // But the exact mapping can vary, so let's try to match by slot index
-                const inputSlotIndex = Math.abs(link.origin_id) - 1;
-                console.log("[FriendlyPipe] inputSlotIndex:", inputSlotIndex);
-                
-                const parentInput = subgraphNode.inputs?.[inputSlotIndex];
-                console.log("[FriendlyPipe] parentInput:", parentInput);
-                
-                if (parentInput && parentInput.link) {
-                    const parentGraph = subgraphNode.graph || app.graph;
-                    const parentLink = parentGraph.links[parentInput.link];
-                    console.log("[FriendlyPipe] parentLink:", parentLink);
-                    
-                    if (parentLink) {
-                        immediateSource = parentGraph.getNodeById(parentLink.origin_id);
-                        originSlot = parentLink.origin_slot;
-                        console.log("[FriendlyPipe] Found source through parent:", immediateSource);
+            // In LiteGraph, the subgraph stores input info in graph.inputs array
+            // The negative ID maps to the input: -1 = first input, -2 = second, etc.
+            // But sometimes it's offset, so let's try multiple approaches
+            
+            const subgraphNode = graph._subgraph_node;
+            
+            // Also try to find parent through other means
+            if (!subgraphNode) {
+                console.log("[FriendlyPipe] No _subgraph_node, searching app.graph for parent...");
+                // Search all graphs for a subgraph containing this graph
+                for (const node of app.graph._nodes || []) {
+                    if (node.subgraph === graph) {
+                        console.log("[FriendlyPipe] Found parent node:", node);
+                        immediateSource = findSourceThroughParent(node, link.origin_slot, graph);
+                        if (immediateSource) {
+                            originSlot = 0; // Will be set by findSourceThroughParent
+                            break;
+                        }
                     }
                 }
+            }
+            
+            if (subgraphNode) {
+                immediateSource = findSourceThroughParent(subgraphNode, link.origin_slot, graph);
+            }
+            
+            // Try using the graph.inputs array which defines subgraph inputs
+            if (!immediateSource && graph.inputs) {
+                console.log("[FriendlyPipe] Trying graph.inputs array");
+                // Find the input definition that matches our slot
+                const inputDef = graph.inputs[link.origin_slot];
+                console.log("[FriendlyPipe] inputDef:", inputDef);
             }
         } else {
             immediateSource = graph.getNodeById(link.origin_id);
