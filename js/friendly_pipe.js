@@ -39,6 +39,9 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
             this.inputs[0].label = this.slotNames[1];
         }
         
+        // Add name widget for slot 1 first (above buttons)
+        this.addSlotNameWidget(1);
+        
         // Add control buttons
         const addWidget = this.addWidget("button", "➕ Add Slot", null, () => {
             if (node.slotCount < 80) {
@@ -52,7 +55,7 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
                     node.inputs[node.inputs.length - 1].label = defaultName;
                 }
                 
-                // Add name widget for the new slot
+                // Add name widget for the new slot (will be inserted before buttons)
                 node.addSlotNameWidget(node.slotCount);
                 node.updateSize();
                 node.notifyConnectedOutputs();
@@ -78,8 +81,9 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
         });
         removeWidget.serialize = false;
         
-        // Add name widget for slot 1
-        this.addSlotNameWidget(1);
+        // Store button references so we can insert widgets before them
+        this.addButton = addWidget;
+        this.removeButton = removeWidget;
         
         this.updateSize();
     };
@@ -99,6 +103,17 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
             node.setDirtyCanvas(true, true);
         });
         nameWidget.slotNum = slotNum;
+        
+        // Move the widget before the buttons if they exist
+        if (this.widgets && this.addButton) {
+            const widgetIndex = this.widgets.indexOf(nameWidget);
+            const addButtonIndex = this.widgets.indexOf(this.addButton);
+            if (widgetIndex > addButtonIndex && addButtonIndex >= 0) {
+                // Remove from current position and insert before buttons
+                this.widgets.splice(widgetIndex, 1);
+                this.widgets.splice(addButtonIndex, 0, nameWidget);
+            }
+        }
     };
     
     nodeType.prototype.removeSlotNameWidget = function(slotNum) {

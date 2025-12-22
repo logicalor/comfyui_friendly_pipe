@@ -1,0 +1,14 @@
+[project]
+name = "comfyui-friendly-pipe"
+description = "Flexible pipe nodes for bundling and unbundling multiple connections of any type in ComfyUI"
+version = "1.0.0"
+license = "MIT"
+readme = "README.md"
+
+[project.urls]
+Repository = "https://github.com/shaunromeo/comfyui-friendly-pipe"
+
+[tool.comfy]
+PublisherId = "shaunromeo"
+DisplayName = "Friendly Pipe"
+Icon = ""
