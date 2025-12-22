@@ -15,234 +15,193 @@ app.registerExtension({
 });
 
 function setupFriendlyPipeIn(nodeType, nodeData, app) {
-            // Store the original onNodeCreated
-            const origOnNodeCreated = nodeType.prototype.onNodeCreated;
-            
-            nodeType.prototype.onNodeCreated = function() {
-                if (origOnNodeCreated) {
-                    origOnNodeCreated.apply(this, arguments);
+    const origOnNodeCreated = nodeType.prototype.onNodeCreated;
+    
+    nodeType.prototype.onNodeCreated = function() {
+        if (origOnNodeCreated) {
+            origOnNodeCreated.apply(this, arguments);
+        }
+        
+        const node = this;
+        
+        // Initialize slot count and names
+        this.slotCount = 1;
+        this.slotNames = { 1: "slot_1" };
+        
+        // Remove all inputs except the first one
+        while (this.inputs && this.inputs.length > 1) {
+            this.removeInput(this.inputs.length - 1);
+        }
+        
+        // Rename first input
+        if (this.inputs && this.inputs.length > 0) {
+            this.inputs[0].label = this.slotNames[1];
+        }
+        
+        // Add control buttons
+        const addWidget = this.addWidget("button", "➕ Add Slot", null, () => {
+            if (node.slotCount < 80) {
+                node.slotCount++;
+                const defaultName = "slot_" + node.slotCount;
+                node.slotNames[node.slotCount] = defaultName;
+                
+                // Add new input slot
+                node.addInput("slot_" + node.slotCount, "*");
+                if (node.inputs && node.inputs.length > 0) {
+                    node.inputs[node.inputs.length - 1].label = defaultName;
                 }
                 
-                const node = this;
+                // Add name widget for the new slot
+                node.addSlotNameWidget(node.slotCount);
+                node.updateSize();
+                node.setDirtyCanvas(true, true);
+            }
+        });
+        addWidget.serialize = false;
+        
+        const removeWidget = this.addWidget("button", "➖ Remove Slot", null, () => {
+            if (node.slotCount > 1) {
+                // Remove the name widget
+                node.removeSlotNameWidget(node.slotCount);
                 
-                // Initialize slot count and names
-                this.slotCount = 1;
-                this.slotNames = {};
+                // Remove the input slot
+                node.removeInput(node.inputs.length - 1);
                 
-                // Add the control buttons widget
-                this.addControlButtons();
+                delete node.slotNames[node.slotCount];
+                node.slotCount--;
+                node.updateSize();
+                node.setDirtyCanvas(true, true);
+            }
+        });
+        removeWidget.serialize = false;
+        
+        // Add name widget for slot 1
+        this.addSlotNameWidget(1);
+        
+        this.updateSize();
+    };
+    
+    nodeType.prototype.addSlotNameWidget = function(slotNum) {
+        const node = this;
+        const defaultName = node.slotNames[slotNum] || ("slot_" + slotNum);
+        
+        const nameWidget = this.addWidget("text", "Label " + slotNum, defaultName, (value) => {
+            node.slotNames[slotNum] = value;
+            // Update the input label
+            const inputIndex = slotNum - 1;
+            if (node.inputs && node.inputs[inputIndex]) {
+                node.inputs[inputIndex].label = value;
+            }
+            node.setDirtyCanvas(true, true);
+        });
+        nameWidget.slotNum = slotNum;
+    };
+    
+    nodeType.prototype.removeSlotNameWidget = function(slotNum) {
+        if (this.widgets) {
+            const widgetIndex = this.widgets.findIndex(w => w.slotNum === slotNum);
+            if (widgetIndex >= 0) {
+                this.widgets.splice(widgetIndex, 1);
+            }
+        }
+    };
+    
+    nodeType.prototype.updateSize = function() {
+        this.setSize(this.computeSize());
+    };
+    
+    // Handle serialization
+    const origOnSerialize = nodeType.prototype.onSerialize;
+    nodeType.prototype.onSerialize = function(o) {
+        if (origOnSerialize) {
+            origOnSerialize.apply(this, arguments);
+        }
+        o.slotCount = this.slotCount;
+        o.slotNames = this.slotNames;
+    };
+    
+    // Handle deserialization
+    const origOnConfigure = nodeType.prototype.onConfigure;
+    nodeType.prototype.onConfigure = function(o) {
+        if (origOnConfigure) {
+            origOnConfigure.apply(this, arguments);
+        }
+        
+        const node = this;
+        
+        if (o.slotNames) {
+            this.slotNames = o.slotNames;
+        }
+        
+        if (o.slotCount !== undefined && o.slotCount > 1) {
+            // We already have 1 slot from onNodeCreated
+            // Add the remaining slots
+            for (let i = 2; i <= o.slotCount; i++) {
+                this.slotCount = i;
+                const name = this.slotNames[i] || ("slot_" + i);
+                this.slotNames[i] = name;
                 
-                // Add initial name widget for slot 1
-                this.addSlotNameWidget(1);
-                
-                // Defer the initial visibility update to ensure inputs are ready
-                setTimeout(() => {
-                    node.updateVisibleSlots();
-                }, 0);
-            };
-            
-            nodeType.prototype.addControlButtons = function() {
-                const node = this;
-                
-                // Create a widget that displays the add/subtract buttons
-                const widget = this.addWidget("button", "➕ Add Slot", null, () => {
-                    if (node.slotCount < 80) {
-                        node.slotCount++;
-                        node.addSlotNameWidget(node.slotCount);
-                        node.updateVisibleSlots();
-                        node.setDirtyCanvas(true, true);
-                    }
-                });
-                widget.serialize = false;
-                
-                const removeWidget = this.addWidget("button", "➖ Remove Slot", null, () => {
-                    if (node.slotCount > 1) {
-                        node.removeSlotNameWidget(node.slotCount);
-                        node.slotCount--;
-                        node.updateVisibleSlots();
-                        node.setDirtyCanvas(true, true);
-                    }
-                });
-                removeWidget.serialize = false;
-            };
-            
-            nodeType.prototype.addSlotNameWidget = function(slotNum) {
-                const node = this;
-                const defaultName = `slot_${slotNum}`;
-                
-                // Create a text input widget for naming this slot
-                const nameWidget = this.addWidget("text", `name_${slotNum}`, node.slotNames[slotNum] || defaultName, (value) => {
-                    node.slotNames[slotNum] = value;
-                    node.updateSlotLabel(slotNum, value);
-                    node.updateHiddenSlotNames();
-                });
-                nameWidget.slotNum = slotNum;
-                
-                // Initialize the slot name if not set
-                if (!node.slotNames[slotNum]) {
-                    node.slotNames[slotNum] = defaultName;
+                // Add input if needed
+                if (!this.inputs || this.inputs.length < i) {
+                    this.addInput("slot_" + i, "*");
+                }
+                if (this.inputs && this.inputs[i - 1]) {
+                    this.inputs[i - 1].label = name;
                 }
                 
-                // Update the slot label immediately
-                node.updateSlotLabel(slotNum, node.slotNames[slotNum]);
-            };
-            
-            nodeType.prototype.removeSlotNameWidget = function(slotNum) {
-                // Find and remove the name widget for this slot
-                const widgetIndex = this.widgets?.findIndex(w => w.slotNum === slotNum);
-                if (widgetIndex !== undefined && widgetIndex >= 0) {
-                    this.widgets.splice(widgetIndex, 1);
+                // Add name widget
+                this.addSlotNameWidget(i);
+            }
+        }
+        
+        // Update all input labels
+        if (this.inputs) {
+            for (let i = 0; i < this.inputs.length; i++) {
+                const slotNum = i + 1;
+                if (this.slotNames[slotNum]) {
+                    this.inputs[i].label = this.slotNames[slotNum];
                 }
-                // Clean up the slot name
-                delete this.slotNames[slotNum];
-                this.updateHiddenSlotNames();
-            };
-            
-            nodeType.prototype.updateSlotLabel = function(slotNum, name) {
-                // Find the input slot and update its label
-                if (this.inputs) {
-                    const input = this.inputs.find(inp => inp.name === `slot_${slotNum}`);
-                    if (input) {
-                        input.label = name || `slot_${slotNum}`;
-                    }
+            }
+        }
+        
+        // Update name widget values
+        if (this.widgets) {
+            for (const widget of this.widgets) {
+                if (widget.slotNum !== undefined && this.slotNames[widget.slotNum]) {
+                    widget.value = this.slotNames[widget.slotNum];
                 }
-            };
-            
-            nodeType.prototype.updateHiddenSlotNames = function() {
-                // Update the hidden slot_names widget with JSON of all names
-                const slotNamesWidget = this.widgets?.find(w => w.name === "slot_names");
-                if (slotNamesWidget) {
-                    slotNamesWidget.value = JSON.stringify(this.slotNames);
-                }
-            };
-            
-            nodeType.prototype.updateVisibleSlots = function() {
-                // Update the hidden slot_count value
-                const slotCountWidget = this.widgets?.find(w => w.name === "slot_count");
-                if (slotCountWidget) {
-                    slotCountWidget.value = this.slotCount;
-                }
-                
-                // Update hidden slot_names value
-                this.updateHiddenSlotNames();
-                
-                // Show/hide input slots based on current count
-                if (this.inputs) {
-                    for (let i = 0; i < this.inputs.length; i++) {
-                        const input = this.inputs[i];
-                        if (!input || !input.name) continue;
-                        const match = input.name.match(/^slot_(\d+)$/);
-                        if (match) {
-                            const slotNum = parseInt(match[1]);
-                            input.hidden = slotNum > this.slotCount;
-                            
-                            // Update label based on stored name
-                            if (!input.hidden && this.slotNames[slotNum]) {
-                                input.label = this.slotNames[slotNum];
-                            }
-                        }
-                    }
-                }
-                
-                // Show/hide name widgets based on current count
-                if (this.widgets) {
-                    for (const widget of this.widgets) {
-                        if (widget.slotNum !== undefined) {
-                            widget.hidden = widget.slotNum > this.slotCount;
-                        }
-                    }
-                }
-                
-                // Recalculate node size
-                this.computeSize();
-            };
-            
-            // Override computeSize to account for hidden slots
-            const origComputeSize = nodeType.prototype.computeSize;
-            nodeType.prototype.computeSize = function(out) {
-                const size = origComputeSize ? origComputeSize.apply(this, arguments) : [200, 100];
-                
-                // Calculate height based on visible slots + widgets
-                const visibleInputs = this.slotCount || 1;
-                const widgetHeight = (this.widgets?.length || 0) * 30;
-                const inputHeight = visibleInputs * 20;
-                const outputHeight = 20; // One output
-                const headerHeight = 30;
-                const padding = 20;
-                
-                size[1] = Math.max(size[1], headerHeight + inputHeight + widgetHeight + outputHeight + padding);
-                
-                return size;
-            };
-            
-            // Custom drawing to only show visible slots
-            const origOnDrawForeground = nodeType.prototype.onDrawForeground;
-            nodeType.prototype.onDrawForeground = function(ctx) {
-                if (origOnDrawForeground) {
-                    origOnDrawForeground.apply(this, arguments);
-                }
-                
-                // Hide inputs beyond slotCount by not drawing them
-                if (this.inputs) {
-                    for (let i = 0; i < this.inputs.length; i++) {
-                        const input = this.inputs[i];
-                        if (!input || !input.name) continue;
-                        const match = input.name.match(/^slot_(\d+)$/);
-                        if (match) {
-                            const slotNum = parseInt(match[1]);
-                            input.hidden = slotNum > this.slotCount;
-                        }
-                    }
-                }
-            };
-            
-            // Handle serialization to save slot count and names
-            const origOnSerialize = nodeType.prototype.onSerialize;
-            nodeType.prototype.onSerialize = function(o) {
-                if (origOnSerialize) {
-                    origOnSerialize.apply(this, arguments);
-                }
-                o.slotCount = this.slotCount;
-                o.slotNames = this.slotNames;
-            };
-            
-            // Handle deserialization to restore slot count and names
-            const origOnConfigure = nodeType.prototype.onConfigure;
-            nodeType.prototype.onConfigure = function(o) {
-                if (origOnConfigure) {
-                    origOnConfigure.apply(this, arguments);
-                }
-                
-                // Restore slot names first
-                if (o.slotNames) {
-                    this.slotNames = o.slotNames;
-                }
-                
-                // Restore slot count and create name widgets
-                if (o.slotCount !== undefined) {
-                    this.slotCount = o.slotCount;
-                    
-                    // Add name widgets for all restored slots (skip 1 as it's added in onNodeCreated)
-                    for (let i = 2; i <= this.slotCount; i++) {
-                        this.addSlotNameWidget(i);
-                    }
-                    
-                    // Update widget values with restored names
-                    if (this.widgets) {
-                        for (const widget of this.widgets) {
-                            if (widget.slotNum !== undefined && this.slotNames[widget.slotNum]) {
-                                widget.value = this.slotNames[widget.slotNum];
-                            }
-                        }
-                    }
-                    
-                    // Defer update to ensure inputs are ready
-                    const node = this;
-                    setTimeout(() => {
-                        node.updateVisibleSlots();
-                    }, 0);
-                }
-            };
+            }
+        }
+        
+        this.updateSize();
+    };
+    
+    // Override getExtraMenuOptions to update hidden values before execution
+    const origGetExtraMenuOptions = nodeType.prototype.getExtraMenuOptions;
+    nodeType.prototype.getExtraMenuOptions = function(canvas, options) {
+        if (origGetExtraMenuOptions) {
+            origGetExtraMenuOptions.apply(this, arguments);
+        }
+    };
+    
+    // Override onExecute or similar to pass slot info
+    const origOnExecutionStart = nodeType.prototype.onExecutionStart;
+    nodeType.prototype.onExecutionStart = function() {
+        if (origOnExecutionStart) {
+            origOnExecutionStart.apply(this, arguments);
+        }
+        // Update widgets for execution
+        if (this.widgets) {
+            const slotCountWidget = this.widgets.find(w => w.name === "slot_count");
+            if (slotCountWidget) {
+                slotCountWidget.value = this.slotCount;
+            }
+            const slotNamesWidget = this.widgets.find(w => w.name === "slot_names");
+            if (slotNamesWidget) {
+                slotNamesWidget.value = JSON.stringify(this.slotNames);
+            }
+        }
+    };
 }
 
 function setupFriendlyPipeOut(nodeType, nodeData, app) {
@@ -255,80 +214,74 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         
         const node = this;
         
-        // Initialize slot count and names
+        // Initialize
         this.slotCount = 1;
         this.slotNames = {};
         
-        // Defer the initial visibility update to ensure outputs are ready
-        setTimeout(() => {
-            node.updateVisibleOutputs();
-        }, 0);
+        // Remove all outputs except the first one
+        while (this.outputs && this.outputs.length > 1) {
+            this.removeOutput(this.outputs.length - 1);
+        }
+        
+        // Rename first output
+        if (this.outputs && this.outputs.length > 0) {
+            this.outputs[0].label = "slot_1";
+        }
+        
+        this.updateSize();
     };
     
-    nodeType.prototype.updateVisibleOutputs = function() {
-        // Show/hide output slots based on current count
+    nodeType.prototype.updateSize = function() {
+        this.setSize(this.computeSize());
+    };
+    
+    nodeType.prototype.updateFromSource = function(slotCount, slotNames) {
+        const node = this;
+        
+        // Update outputs to match source
+        const targetCount = slotCount || 1;
+        const names = slotNames || {};
+        
+        // Add or remove outputs as needed
+        while (this.outputs && this.outputs.length < targetCount) {
+            const num = this.outputs.length + 1;
+            this.addOutput("slot_" + num, "*");
+        }
+        while (this.outputs && this.outputs.length > targetCount) {
+            this.removeOutput(this.outputs.length - 1);
+        }
+        
+        // Update labels
         if (this.outputs) {
             for (let i = 0; i < this.outputs.length; i++) {
-                const output = this.outputs[i];
-                if (!output || !output.name) continue;
-                const match = output.name.match(/^slot_(\d+)$/);
-                if (match) {
-                    const slotNum = parseInt(match[1]);
-                    output.hidden = slotNum > this.slotCount;
-                    
-                    // Update label based on stored name
-                    if (!output.hidden && this.slotNames[slotNum]) {
-                        output.label = this.slotNames[slotNum];
-                    } else if (!output.hidden) {
-                        output.label = `slot_${slotNum}`;
-                    }
-                }
+                const slotNum = i + 1;
+                this.outputs[i].label = names[slotNum] || ("slot_" + slotNum);
             }
         }
         
-        // Recalculate node size
-        this.computeSize();
+        this.slotCount = targetCount;
+        this.slotNames = names;
+        this.updateSize();
         this.setDirtyCanvas(true, true);
     };
     
-    nodeType.prototype.updateOutputLabels = function(names) {
-        if (this.outputs) {
-            for (let i = 0; i < this.outputs.length; i++) {
-                const output = this.outputs[i];
-                if (!output || !output.name) continue;
-                const match = output.name.match(/^slot_(\d+)$/);
-                if (match) {
-                    const slotNum = parseInt(match[1]);
-                    if (names[slotNum]) {
-                        output.label = names[slotNum];
-                    } else {
-                        output.label = `slot_${slotNum}`;
-                    }
-                }
-            }
-        }
-    };
-    
-    // Handle connection changes to update from connected FriendlyPipeIn
+    // Handle connection changes
     const origOnConnectionsChange = nodeType.prototype.onConnectionsChange;
     nodeType.prototype.onConnectionsChange = function(type, index, connected, linkInfo) {
         if (origOnConnectionsChange) {
             origOnConnectionsChange.apply(this, arguments);
         }
         
-        // When input connection changes, try to get info from connected node
-        if (type === 1) { // Input connection
-            this.updateFromConnectedPipe();
+        // When input connection changes
+        if (type === 1) {
+            this.syncWithSource();
         }
     };
     
-    nodeType.prototype.updateFromConnectedPipe = function() {
-        // Find the connected FriendlyPipeIn node
+    nodeType.prototype.syncWithSource = function() {
         if (!this.inputs || !this.inputs[0] || !this.inputs[0].link) {
             // No connection, reset to default
-            this.slotCount = 1;
-            this.slotNames = {};
-            this.updateVisibleOutputs();
+            this.updateFromSource(1, {});
             return;
         }
         
@@ -339,50 +292,8 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         const sourceNode = app.graph.getNodeById(link.origin_id);
         if (!sourceNode) return;
         
-        // Check if it's a FriendlyPipeIn or another FriendlyPipeOut (for chaining)
-        if (sourceNode.type === "FriendlyPipeIn" || sourceNode.type === "FriendlyPipeOut") {
-            this.slotCount = sourceNode.slotCount || 1;
-            this.slotNames = sourceNode.slotNames || {};
-            this.updateOutputLabels(this.slotNames);
-            this.updateVisibleOutputs();
-        }
-    };
-    
-    // Override computeSize to account for hidden slots
-    const origComputeSize = nodeType.prototype.computeSize;
-    nodeType.prototype.computeSize = function(out) {
-        const size = origComputeSize ? origComputeSize.apply(this, arguments) : [200, 100];
-        
-        // Calculate height based on visible outputs
-        const visibleOutputs = this.slotCount || 1;
-        const inputHeight = 20; // One input (pipe)
-        const outputHeight = visibleOutputs * 20;
-        const headerHeight = 30;
-        const padding = 20;
-        
-        size[1] = Math.max(size[1], headerHeight + inputHeight + outputHeight + padding);
-        
-        return size;
-    };
-    
-    // Custom drawing to only show visible outputs
-    const origOnDrawForeground = nodeType.prototype.onDrawForeground;
-    nodeType.prototype.onDrawForeground = function(ctx) {
-        if (origOnDrawForeground) {
-            origOnDrawForeground.apply(this, arguments);
-        }
-        
-        // Hide outputs beyond slotCount
-        if (this.outputs) {
-            for (let i = 0; i < this.outputs.length; i++) {
-                const output = this.outputs[i];
-                if (!output || !output.name) continue;
-                const match = output.name.match(/^slot_(\d+)$/);
-                if (match) {
-                    const slotNum = parseInt(match[1]);
-                    output.hidden = slotNum > this.slotCount;
-                }
-            }
+        if (sourceNode.slotCount !== undefined) {
+            this.updateFromSource(sourceNode.slotCount, sourceNode.slotNames || {});
         }
     };
     
@@ -403,19 +314,8 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
             origOnConfigure.apply(this, arguments);
         }
         
-        if (o.slotNames) {
-            this.slotNames = o.slotNames;
-        }
         if (o.slotCount !== undefined) {
-            this.slotCount = o.slotCount;
+            this.updateFromSource(o.slotCount, o.slotNames || {});
         }
-        
-        this.updateOutputLabels(this.slotNames);
-        
-        // Defer update to ensure outputs are ready
-        const node = this;
-        setTimeout(() => {
-            node.updateVisibleOutputs();
-        }, 0);
     };
 }
