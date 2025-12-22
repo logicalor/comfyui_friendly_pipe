@@ -541,23 +541,40 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
     nodeType.prototype.syncWithSource = function() {
         const graph = this.graph || app.graph;
         
+        console.log("[FriendlyPipe] syncWithSource called on node", this.id);
+        console.log("[FriendlyPipe] this.graph:", this.graph);
+        console.log("[FriendlyPipe] this.inputs:", this.inputs);
+        
         if (!this.inputs || !this.inputs[0] || !this.inputs[0].link) {
+            console.log("[FriendlyPipe] No connection, resetting to default");
             // No connection, reset to default
             this.updateFromSource(1, {}, {});
             return;
         }
         
         const linkId = this.inputs[0].link;
+        console.log("[FriendlyPipe] linkId:", linkId);
+        
         const link = graph.links[linkId];
-        if (!link) return;
+        console.log("[FriendlyPipe] link:", link);
+        
+        if (!link) {
+            console.log("[FriendlyPipe] Link not found in graph.links");
+            return;
+        }
         
         const immediateSource = graph.getNodeById(link.origin_id);
+        console.log("[FriendlyPipe] immediateSource:", immediateSource);
+        console.log("[FriendlyPipe] immediateSource.type:", immediateSource?.type);
+        
         if (!immediateSource) return;
         
         // Traverse through reroute/subgraph nodes to find the original FriendlyPipeIn
         const sourceNode = findOriginalSource(immediateSource, link.origin_slot);
+        console.log("[FriendlyPipe] sourceNode from traversal:", sourceNode);
         
         if (sourceNode && sourceNode.slotCount !== undefined) {
+            console.log("[FriendlyPipe] Found source with slotCount:", sourceNode.slotCount);
             // Make sure source has latest types
             if (sourceNode.updateSlotTypes) {
                 sourceNode.updateSlotTypes();
@@ -568,6 +585,7 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
                 sourceNode.slotTypes || {}
             );
         } else if (immediateSource.slotCount !== undefined) {
+            console.log("[FriendlyPipe] Using immediate source with slotCount:", immediateSource.slotCount);
             // Fallback to immediate source if traversal failed
             if (immediateSource.updateSlotTypes) {
                 immediateSource.updateSlotTypes();
@@ -577,6 +595,8 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
                 immediateSource.slotNames || {},
                 immediateSource.slotTypes || {}
             );
+        } else {
+            console.log("[FriendlyPipe] No valid source found");
         }
     };
     
