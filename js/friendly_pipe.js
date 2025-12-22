@@ -1,5 +1,80 @@
 import { app } from "../../scripts/app.js";
 
+// Helper function to traverse backwards through reroute/forwarding nodes to find the original source
+function findOriginalSource(node, slotIndex) {
+    const visited = new Set();
+    let currentNode = node;
+    let currentSlot = slotIndex;
+    
+    while (currentNode) {
+        // Prevent infinite loops
+        const nodeKey = `${currentNode.id}-${currentSlot}`;
+        if (visited.has(nodeKey)) break;
+        visited.add(nodeKey);
+        
+        // Check if this node has the properties we're looking for (FriendlyPipeIn or FriendlyPipeOut)
+        if (currentNode.slotCount !== undefined) {
+            return currentNode;
+        }
+        
+        // Check if this is a reroute or pass-through node
+        // Reroute nodes typically have 1 input and 1 output and just forward data
+        const isReroute = currentNode.type === "Reroute" || 
+                          currentNode.type === "ReroutePrimitive" ||
+                          (currentNode.inputs && currentNode.inputs.length === 1 && 
+                           currentNode.outputs && currentNode.outputs.length === 1);
+        
+        if (isReroute && currentNode.inputs && currentNode.inputs[0] && currentNode.inputs[0].link) {
+            // Follow the link backwards
+            const link = app.graph.links[currentNode.inputs[0].link];
+            if (link) {
+                currentNode = app.graph.getNodeById(link.origin_id);
+                currentSlot = link.origin_slot;
+                continue;
+            }
+        }
+        
+        // Not a reroute or no more links to follow
+        break;
+    }
+    
+    return null;
+}
+
+// Helper function to traverse forwards through reroute/forwarding nodes to notify all connected outputs
+function notifyDownstreamNodes(node, slotIndex, visited = new Set()) {
+    if (!node.outputs || !node.outputs[slotIndex] || !node.outputs[slotIndex].links) return;
+    
+    for (const linkId of node.outputs[slotIndex].links) {
+        const link = app.graph.links[linkId];
+        if (!link) continue;
+        
+        const targetNode = app.graph.getNodeById(link.target_id);
+        if (!targetNode) continue;
+        
+        // Prevent infinite loops
+        const nodeKey = `${targetNode.id}`;
+        if (visited.has(nodeKey)) continue;
+        visited.add(nodeKey);
+        
+        // If target has syncWithSource, call it
+        if (targetNode.syncWithSource) {
+            targetNode.syncWithSource();
+        }
+        
+        // If target is a reroute/pass-through, continue traversing
+        const isReroute = targetNode.type === "Reroute" || 
+                          targetNode.type === "ReroutePrimitive" ||
+                          (targetNode.inputs && targetNode.inputs.length === 1 && 
+                           targetNode.outputs && targetNode.outputs.length === 1 &&
+                           !targetNode.slotCount);
+        
+        if (isReroute && targetNode.outputs) {
+            notifyDownstreamNodes(targetNode, 0, visited);
+        }
+    }
+}
+
 app.registerExtension({
     name: "Comfy.FriendlyPipe",
     
@@ -126,18 +201,10 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
     };
     
     nodeType.prototype.notifyConnectedOutputs = function() {
-        // Find all nodes connected to our output and notify them
+        // Find all nodes connected to our output and notify them (traversing through reroutes)
         if (!this.outputs || !this.outputs[0] || !this.outputs[0].links) return;
         
-        for (const linkId of this.outputs[0].links) {
-            const link = app.graph.links[linkId];
-            if (!link) continue;
-            
-            const targetNode = app.graph.getNodeById(link.target_id);
-            if (targetNode && targetNode.syncWithSource) {
-                targetNode.syncWithSource();
-            }
-        }
+        notifyDownstreamNodes(this, 0, new Set([`${this.id}`]));
     };
     
     nodeType.prototype.updateSize = function() {
@@ -366,8 +433,11 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         const link = app.graph.links[linkId];
         if (!link) return;
         
-        const sourceNode = app.graph.getNodeById(link.origin_id);
-        if (!sourceNode) return;
+        const immediateSource = app.graph.getNodeById(link.origin_id);
+        if (!immediateSource) return;
+        
+        // Traverse through reroute nodes to find the original FriendlyPipeIn
+        const sourceNode = findOriginalSource(immediateSource, link.origin_slot) || immediateSource;
         
         if (sourceNode.slotCount !== undefined) {
             // Make sure source has latest types
