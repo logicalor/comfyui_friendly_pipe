@@ -23,18 +23,22 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
                     origOnNodeCreated.apply(this, arguments);
                 }
                 
+                const node = this;
+                
                 // Initialize slot count and names
                 this.slotCount = 1;
                 this.slotNames = {};
-                
-                // Hide all slots except the first one initially
-                this.updateVisibleSlots();
                 
                 // Add the control buttons widget
                 this.addControlButtons();
                 
                 // Add initial name widget for slot 1
                 this.addSlotNameWidget(1);
+                
+                // Defer the initial visibility update to ensure inputs are ready
+                setTimeout(() => {
+                    node.updateVisibleSlots();
+                }, 0);
             };
             
             nodeType.prototype.addControlButtons = function() {
@@ -126,6 +130,7 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
                 if (this.inputs) {
                     for (let i = 0; i < this.inputs.length; i++) {
                         const input = this.inputs[i];
+                        if (!input || !input.name) continue;
                         const match = input.name.match(/^slot_(\d+)$/);
                         if (match) {
                             const slotNum = parseInt(match[1]);
@@ -181,6 +186,7 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
                 if (this.inputs) {
                     for (let i = 0; i < this.inputs.length; i++) {
                         const input = this.inputs[i];
+                        if (!input || !input.name) continue;
                         const match = input.name.match(/^slot_(\d+)$/);
                         if (match) {
                             const slotNum = parseInt(match[1]);
@@ -230,7 +236,11 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
                         }
                     }
                     
-                    this.updateVisibleSlots();
+                    // Defer update to ensure inputs are ready
+                    const node = this;
+                    setTimeout(() => {
+                        node.updateVisibleSlots();
+                    }, 0);
                 }
             };
 }
@@ -243,12 +253,16 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
             origOnNodeCreated.apply(this, arguments);
         }
         
+        const node = this;
+        
         // Initialize slot count and names
         this.slotCount = 1;
         this.slotNames = {};
         
-        // Hide all output slots except the first one initially
-        this.updateVisibleOutputs();
+        // Defer the initial visibility update to ensure outputs are ready
+        setTimeout(() => {
+            node.updateVisibleOutputs();
+        }, 0);
     };
     
     nodeType.prototype.updateVisibleOutputs = function() {
@@ -256,6 +270,7 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         if (this.outputs) {
             for (let i = 0; i < this.outputs.length; i++) {
                 const output = this.outputs[i];
+                if (!output || !output.name) continue;
                 const match = output.name.match(/^slot_(\d+)$/);
                 if (match) {
                     const slotNum = parseInt(match[1]);
@@ -280,6 +295,7 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         if (this.outputs) {
             for (let i = 0; i < this.outputs.length; i++) {
                 const output = this.outputs[i];
+                if (!output || !output.name) continue;
                 const match = output.name.match(/^slot_(\d+)$/);
                 if (match) {
                     const slotNum = parseInt(match[1]);
@@ -360,6 +376,7 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         if (this.outputs) {
             for (let i = 0; i < this.outputs.length; i++) {
                 const output = this.outputs[i];
+                if (!output || !output.name) continue;
                 const match = output.name.match(/^slot_(\d+)$/);
                 if (match) {
                     const slotNum = parseInt(match[1]);
@@ -394,6 +411,11 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         }
         
         this.updateOutputLabels(this.slotNames);
-        this.updateVisibleOutputs();
+        
+        // Defer update to ensure outputs are ready
+        const node = this;
+        setTimeout(() => {
+            node.updateVisibleOutputs();
+        }, 0);
     };
 }
