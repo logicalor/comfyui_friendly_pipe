@@ -54,6 +54,7 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
                 // Add name widget for the new slot
                 node.addSlotNameWidget(node.slotCount);
                 node.updateSize();
+                node.notifyConnectedOutputs();
                 node.setDirtyCanvas(true, true);
             }
         });
@@ -70,6 +71,7 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
                 delete node.slotNames[node.slotCount];
                 node.slotCount--;
                 node.updateSize();
+                node.notifyConnectedOutputs();
                 node.setDirtyCanvas(true, true);
             }
         });
@@ -92,6 +94,7 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
             if (node.inputs && node.inputs[inputIndex]) {
                 node.inputs[inputIndex].label = value;
             }
+            node.notifyConnectedOutputs();
             node.setDirtyCanvas(true, true);
         });
         nameWidget.slotNum = slotNum;
@@ -102,6 +105,21 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
             const widgetIndex = this.widgets.findIndex(w => w.slotNum === slotNum);
             if (widgetIndex >= 0) {
                 this.widgets.splice(widgetIndex, 1);
+            }
+        }
+    };
+    
+    nodeType.prototype.notifyConnectedOutputs = function() {
+        // Find all nodes connected to our output and notify them
+        if (!this.outputs || !this.outputs[0] || !this.outputs[0].links) return;
+        
+        for (const linkId of this.outputs[0].links) {
+            const link = app.graph.links[linkId];
+            if (!link) continue;
+            
+            const targetNode = app.graph.getNodeById(link.target_id);
+            if (targetNode && targetNode.syncWithSource) {
+                targetNode.syncWithSource();
             }
         }
     };
