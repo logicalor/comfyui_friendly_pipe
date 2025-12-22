@@ -124,6 +124,29 @@ function findOriginalSource(node, slotIndex, depth = 0) {
             const outputSlot = currentSlot;
             const subgraphNodes = subgraph._nodes || [];
             console.log("[FriendlyPipe] findOriginalSource: Subgraph has", subgraphNodes.length, "nodes");
+            console.log("[FriendlyPipe] findOriginalSource: subgraph.outputs:", subgraph.outputs);
+            console.log("[FriendlyPipe] findOriginalSource: subgraph._outputs:", subgraph._outputs);
+            console.log("[FriendlyPipe] findOriginalSource: currentNode.outputs:", currentNode.outputs);
+            console.log("[FriendlyPipe] findOriginalSource: subgraph keys:", Object.keys(subgraph));
+            
+            // Check if subgraph.outputs defines the output mappings
+            if (subgraph.outputs && subgraph.outputs[outputSlot]) {
+                const outputDef = subgraph.outputs[outputSlot];
+                console.log("[FriendlyPipe] findOriginalSource: outputDef:", outputDef);
+                // The output definition might have a link to the internal node
+                if (outputDef.link !== undefined && outputDef.link !== null) {
+                    const innerLink = subgraph.links[outputDef.link];
+                    console.log("[FriendlyPipe] findOriginalSource: inner link from output def:", innerLink);
+                    if (innerLink) {
+                        const innerSource = subgraph.getNodeById(innerLink.origin_id);
+                        console.log("[FriendlyPipe] findOriginalSource: inner source from output def:", innerSource?.type, innerSource?.id);
+                        if (innerSource) {
+                            const result = findOriginalSource(innerSource, innerLink.origin_slot, depth + 1);
+                            if (result) return result;
+                        }
+                    }
+                }
+            }
             
             // Find the graph/output node that corresponds to this output slot
             for (const innerNode of subgraphNodes) {
