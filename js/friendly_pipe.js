@@ -24,9 +24,10 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
         
         const node = this;
         
-        // Initialize slot count and names
+        // Initialize slot count, names, and types
         this.slotCount = 1;
         this.slotNames = { 1: "slot_1" };
+        this.slotTypes = {};
         
         // Remove all inputs except the first one
         while (this.inputs && this.inputs.length > 1) {
@@ -128,6 +129,40 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
         this.setSize(this.computeSize());
     };
     
+    // Handle connection changes to track types
+    const origOnConnectionsChange = nodeType.prototype.onConnectionsChange;
+    nodeType.prototype.onConnectionsChange = function(type, index, connected, linkInfo) {
+        if (origOnConnectionsChange) {
+            origOnConnectionsChange.apply(this, arguments);
+        }
+        
+        // When an input connection changes, update the type
+        if (type === 1) { // Input connection
+            this.updateSlotTypes();
+            this.notifyConnectedOutputs();
+        }
+    };
+    
+    nodeType.prototype.updateSlotTypes = function() {
+        this.slotTypes = {};
+        
+        if (!this.inputs) return;
+        
+        for (let i = 0; i < this.inputs.length; i++) {
+            const input = this.inputs[i];
+            if (input && input.link) {
+                const link = app.graph.links[input.link];
+                if (link) {
+                    const sourceNode = app.graph.getNodeById(link.origin_id);
+                    if (sourceNode && sourceNode.outputs && sourceNode.outputs[link.origin_slot]) {
+                        const outputType = sourceNode.outputs[link.origin_slot].type;
+                        this.slotTypes[i + 1] = outputType;
+                    }
+                }
+            }
+        }
+    };
+    
     // Handle serialization
     const origOnSerialize = nodeType.prototype.onSerialize;
     nodeType.prototype.onSerialize = function(o) {
@@ -136,6 +171,7 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
         }
         o.slotCount = this.slotCount;
         o.slotNames = this.slotNames;
+        o.slotTypes = this.slotTypes;
     };
     
     // Handle deserialization
@@ -149,6 +185,9 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
         
         if (o.slotNames) {
             this.slotNames = o.slotNames;
+        }
+        if (o.slotTypes) {
+            this.slotTypes = o.slotTypes;
         }
         
         if (o.slotCount !== undefined && o.slotCount > 1) {
@@ -235,6 +274,7 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         // Initialize
         this.slotCount = 1;
         this.slotNames = {};
+        this.slotTypes = {};
         
         // Remove all outputs except the first one
         while (this.outputs && this.outputs.length > 1) {
@@ -253,32 +293,36 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         this.setSize(this.computeSize());
     };
     
-    nodeType.prototype.updateFromSource = function(slotCount, slotNames) {
+    nodeType.prototype.updateFromSource = function(slotCount, slotNames, slotTypes) {
         const node = this;
         
         // Update outputs to match source
         const targetCount = slotCount || 1;
         const names = slotNames || {};
+        const types = slotTypes || {};
         
         // Add or remove outputs as needed
         while (this.outputs && this.outputs.length < targetCount) {
             const num = this.outputs.length + 1;
-            this.addOutput("slot_" + num, "*");
+            const slotType = types[num] || "*";
+            this.addOutput("slot_" + num, slotType);
         }
         while (this.outputs && this.outputs.length > targetCount) {
             this.removeOutput(this.outputs.length - 1);
         }
         
-        // Update labels
+        // Update labels and types
         if (this.outputs) {
             for (let i = 0; i < this.outputs.length; i++) {
                 const slotNum = i + 1;
                 this.outputs[i].label = names[slotNum] || ("slot_" + slotNum);
+                this.outputs[i].type = types[slotNum] || "*";
             }
         }
         
         this.slotCount = targetCount;
         this.slotNames = names;
+        this.slotTypes = types;
         this.updateSize();
         this.setDirtyCanvas(true, true);
     };
@@ -299,7 +343,7 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
     nodeType.prototype.syncWithSource = function() {
         if (!this.inputs || !this.inputs[0] || !this.inputs[0].link) {
             // No connection, reset to default
-            this.updateFromSource(1, {});
+            this.updateFromSource(1, {}, {});
             return;
         }
         
@@ -311,7 +355,15 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         if (!sourceNode) return;
         
         if (sourceNode.slotCount !== undefined) {
-            this.updateFromSource(sourceNode.slotCount, sourceNode.slotNames || {});
+            // Make sure source has latest types
+            if (sourceNode.updateSlotTypes) {
+                sourceNode.updateSlotTypes();
+            }
+            this.updateFromSource(
+                sourceNode.slotCount, 
+                sourceNode.slotNames || {},
+                sourceNode.slotTypes || {}
+            );
         }
     };
     
@@ -323,6 +375,7 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         }
         o.slotCount = this.slotCount;
         o.slotNames = this.slotNames;
+        o.slotTypes = this.slotTypes;
     };
     
     // Handle deserialization
@@ -333,7 +386,7 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         }
         
         if (o.slotCount !== undefined) {
-            this.updateFromSource(o.slotCount, o.slotNames || {});
+            this.updateFromSource(o.slotCount, o.slotNames || {}, o.slotTypes || {});
         }
     };
 }
