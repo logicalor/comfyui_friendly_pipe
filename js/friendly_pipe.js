@@ -563,14 +563,53 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
             return;
         }
         
-        const immediateSource = graph.getNodeById(link.origin_id);
+        let immediateSource = null;
+        let originSlot = link.origin_slot;
+        
+        // Handle negative origin_id (subgraph input boundary)
+        if (link.origin_id < 0) {
+            console.log("[FriendlyPipe] Negative origin_id detected, this is a subgraph input");
+            // The input slot index is encoded in the negative ID: -1 = slot 0, -10 = slot 9, etc.
+            // Or it could be stored differently - let's find the parent subgraph
+            const subgraphNode = graph._subgraph_node;
+            console.log("[FriendlyPipe] subgraphNode:", subgraphNode);
+            
+            if (subgraphNode) {
+                // Find which input slot this corresponds to
+                // In LiteGraph, negative IDs map to input slots: -1 is first input, -2 is second, etc.
+                // But the exact mapping can vary, so let's try to match by slot index
+                const inputSlotIndex = Math.abs(link.origin_id) - 1;
+                console.log("[FriendlyPipe] inputSlotIndex:", inputSlotIndex);
+                
+                const parentInput = subgraphNode.inputs?.[inputSlotIndex];
+                console.log("[FriendlyPipe] parentInput:", parentInput);
+                
+                if (parentInput && parentInput.link) {
+                    const parentGraph = subgraphNode.graph || app.graph;
+                    const parentLink = parentGraph.links[parentInput.link];
+                    console.log("[FriendlyPipe] parentLink:", parentLink);
+                    
+                    if (parentLink) {
+                        immediateSource = parentGraph.getNodeById(parentLink.origin_id);
+                        originSlot = parentLink.origin_slot;
+                        console.log("[FriendlyPipe] Found source through parent:", immediateSource);
+                    }
+                }
+            }
+        } else {
+            immediateSource = graph.getNodeById(link.origin_id);
+        }
+        
         console.log("[FriendlyPipe] immediateSource:", immediateSource);
         console.log("[FriendlyPipe] immediateSource.type:", immediateSource?.type);
         
-        if (!immediateSource) return;
+        if (!immediateSource) {
+            console.log("[FriendlyPipe] No immediate source found");
+            return;
+        }
         
         // Traverse through reroute/subgraph nodes to find the original FriendlyPipeIn
-        const sourceNode = findOriginalSource(immediateSource, link.origin_slot);
+        const sourceNode = findOriginalSource(immediateSource, originSlot);
         console.log("[FriendlyPipe] sourceNode from traversal:", sourceNode);
         
         if (sourceNode && sourceNode.slotCount !== undefined) {
