@@ -6,7 +6,7 @@ license = "MIT"
 readme = "README.md"
 
 [project.urls]
-Repository = "https://github.com/logicalor/comfyui-friendly-pipe"
+Repository = "https://github.com/logicalor/comfyui_friendly_pipe"
 
 [tool.comfy]
 PublisherId = "logicalor"

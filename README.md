@@ -24,7 +24,7 @@ A ComfyUI custom node pack that provides flexible, user-friendly pipe nodes for 
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/logicalor/comfyui-friendly-pipe.git
+git clone https://github.com/logicalor/comfyui_friendly_pipe.git
 ```
 
 ### Option 3: Manual Installation
