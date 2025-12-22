@@ -1,3 +1,5 @@
+from .any_type import ANY_TYPE
+
 class FriendlyPipeIn:
     """
     A pipe input node that bundles up to 80 arbitrary inputs into a single pipe output.
@@ -18,9 +20,9 @@ class FriendlyPipeIn:
             }
         }
         
-        # Define all possible slots as optional with wildcard type
+        # Define all possible slots as optional with ANY_TYPE
         for i in range(1, cls.MAX_SLOTS + 1):
-            inputs["optional"][f"slot_{i}"] = ("*", {"forceInput": True})
+            inputs["optional"][f"slot_{i}"] = (ANY_TYPE, {"forceInput": True})
         
         return inputs
 

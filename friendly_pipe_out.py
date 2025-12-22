@@ -1,3 +1,5 @@
+from .any_type import ANY_TYPE
+
 class FriendlyPipeOut:
     """
     A pipe output node that unpacks a FRIENDLY_PIPE into individual outputs.
@@ -18,8 +20,8 @@ class FriendlyPipeOut:
             }
         }
 
-    # Define all possible output slots with wildcard type
-    RETURN_TYPES = tuple(["*"] * MAX_SLOTS)
+    # Define all possible output slots with ANY_TYPE that matches all types
+    RETURN_TYPES = tuple([ANY_TYPE] * MAX_SLOTS)
     RETURN_NAMES = tuple([f"slot_{i}" for i in range(1, MAX_SLOTS + 1)])
     FUNCTION = "execute"
     CATEGORY = "utils/pipe"
