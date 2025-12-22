@@ -117,29 +117,42 @@ function findOriginalSource(node, slotIndex, depth = 0) {
             return currentNode;
         }
         
-        // Handle Subgraph nodes - need to enter the subgraph and find the graph/output
+        // Handle Subgraph nodes - need to enter the subgraph and find the source connected to the output
         if (currentNode.subgraph) {
             console.log("[FriendlyPipe] findOriginalSource: Entering subgraph node, outputSlot:", currentSlot);
             const subgraph = currentNode.subgraph;
             const outputSlot = currentSlot;
-            const subgraphNodes = subgraph._nodes || [];
-            console.log("[FriendlyPipe] findOriginalSource: Subgraph has", subgraphNodes.length, "nodes");
-            console.log("[FriendlyPipe] findOriginalSource: subgraph.outputs:", subgraph.outputs);
-            console.log("[FriendlyPipe] findOriginalSource: subgraph._outputs:", subgraph._outputs);
-            console.log("[FriendlyPipe] findOriginalSource: currentNode.outputs:", currentNode.outputs);
-            console.log("[FriendlyPipe] findOriginalSource: subgraph keys:", Object.keys(subgraph));
             
-            // Check if subgraph.outputs defines the output mappings
+            // Check if subgraph.outputs defines the output mappings (ComfyUI style)
             if (subgraph.outputs && subgraph.outputs[outputSlot]) {
                 const outputDef = subgraph.outputs[outputSlot];
                 console.log("[FriendlyPipe] findOriginalSource: outputDef:", outputDef);
-                // The output definition might have a link to the internal node
-                if (outputDef.link !== undefined && outputDef.link !== null) {
-                    const innerLink = subgraph.links[outputDef.link];
-                    console.log("[FriendlyPipe] findOriginalSource: inner link from output def:", innerLink);
+                
+                // SubgraphOutput has linkIds array containing internal link IDs
+                const linkIds = outputDef.linkIds || outputDef.links || [];
+                console.log("[FriendlyPipe] findOriginalSource: linkIds:", linkIds);
+                
+                if (linkIds.length > 0) {
+                    const innerLinkId = linkIds[0]; // Take the first link
+                    const innerLink = subgraph.links[innerLinkId];
+                    console.log("[FriendlyPipe] findOriginalSource: inner link:", innerLink);
                     if (innerLink) {
                         const innerSource = subgraph.getNodeById(innerLink.origin_id);
-                        console.log("[FriendlyPipe] findOriginalSource: inner source from output def:", innerSource?.type, innerSource?.id);
+                        console.log("[FriendlyPipe] findOriginalSource: inner source:", innerSource?.type, innerSource?.id);
+                        if (innerSource) {
+                            const result = findOriginalSource(innerSource, innerLink.origin_slot, depth + 1);
+                            console.log("[FriendlyPipe] findOriginalSource: recursive result:", result?.type, result?.id);
+                            if (result) return result;
+                        }
+                    }
+                }
+                
+                // Also check for a single 'link' property
+                if (outputDef.link !== undefined && outputDef.link !== null) {
+                    const innerLink = subgraph.links[outputDef.link];
+                    console.log("[FriendlyPipe] findOriginalSource: inner link from .link:", innerLink);
+                    if (innerLink) {
+                        const innerSource = subgraph.getNodeById(innerLink.origin_id);
                         if (innerSource) {
                             const result = findOriginalSource(innerSource, innerLink.origin_slot, depth + 1);
                             if (result) return result;
@@ -148,28 +161,21 @@ function findOriginalSource(node, slotIndex, depth = 0) {
                 }
             }
             
-            // Find the graph/output node that corresponds to this output slot
+            // Fallback: search for graph/output nodes (LiteGraph style)
+            const subgraphNodes = subgraph._nodes || [];
             for (const innerNode of subgraphNodes) {
-                console.log("[FriendlyPipe] findOriginalSource: Checking inner node:", innerNode.type, innerNode.id);
                 if (innerNode.type === "graph/output" || innerNode.type === "GraphOutput") {
                     const outputIndex = innerNode.properties?.slot_index ?? 
                                         innerNode.properties?.index ?? 
                                         innerNode.slot_index ?? 0;
-                    console.log("[FriendlyPipe] findOriginalSource: graph/output node, outputIndex:", outputIndex, "looking for:", outputSlot);
                     if (outputIndex === outputSlot) {
-                        // Found the matching graph/output, trace back from its input
                         const graphOutputInput = innerNode.inputs?.[0];
-                        console.log("[FriendlyPipe] findOriginalSource: graph/output input:", graphOutputInput);
                         if (graphOutputInput && graphOutputInput.link) {
                             const innerLink = subgraph.links[graphOutputInput.link];
-                            console.log("[FriendlyPipe] findOriginalSource: innerLink:", innerLink);
                             if (innerLink) {
                                 const innerSource = subgraph.getNodeById(innerLink.origin_id);
-                                console.log("[FriendlyPipe] findOriginalSource: innerSource:", innerSource?.type, innerSource?.id);
                                 if (innerSource) {
-                                    // Recursively search inside the subgraph
                                     const result = findOriginalSource(innerSource, innerLink.origin_slot, depth + 1);
-                                    console.log("[FriendlyPipe] findOriginalSource: recursive result:", result?.type, result?.id);
                                     if (result) return result;
                                 }
                             }
