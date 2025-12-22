@@ -1,6 +1,7 @@
 import { app } from "../../scripts/app.js";
 
 // Helper function to find source through parent subgraph node
+// Returns { node, slot } or null
 function findSourceThroughParent(subgraphNode, inputSlotIndex, subgraph) {
     console.log("[FriendlyPipe] findSourceThroughParent called");
     console.log("[FriendlyPipe] subgraphNode:", subgraphNode);
@@ -29,8 +30,8 @@ function findSourceThroughParent(subgraphNode, inputSlotIndex, subgraph) {
             }
             
             const source = parentGraph.getNodeById(parentLink.origin_id);
-            console.log("[FriendlyPipe] Found source:", source);
-            return source;
+            console.log("[FriendlyPipe] Found source:", source, "slot:", parentLink.origin_slot);
+            return { node: source, slot: parentLink.origin_slot };
         }
     }
     
@@ -715,17 +716,22 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
                 for (const node of app.graph._nodes || []) {
                     if (node.subgraph === graph) {
                         console.log("[FriendlyPipe] Found parent node:", node);
-                        immediateSource = findSourceThroughParent(node, link.origin_slot, graph);
-                        if (immediateSource) {
-                            originSlot = 0; // Will be set by findSourceThroughParent
+                        const result = findSourceThroughParent(node, link.origin_slot, graph);
+                        if (result) {
+                            immediateSource = result.node;
+                            originSlot = result.slot;
                             break;
                         }
                     }
                 }
             }
             
-            if (subgraphNode) {
-                immediateSource = findSourceThroughParent(subgraphNode, link.origin_slot, graph);
+            if (subgraphNode && !immediateSource) {
+                const result = findSourceThroughParent(subgraphNode, link.origin_slot, graph);
+                if (result) {
+                    immediateSource = result.node;
+                    originSlot = result.slot;
+                }
             }
             
             // Try using the graph.inputs array which defines subgraph inputs
@@ -741,6 +747,7 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         
         console.log("[FriendlyPipe] immediateSource:", immediateSource);
         console.log("[FriendlyPipe] immediateSource.type:", immediateSource?.type);
+        console.log("[FriendlyPipe] originSlot:", originSlot);
         
         if (!immediateSource) {
             console.log("[FriendlyPipe] No immediate source found");
@@ -978,12 +985,20 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         if (link.origin_id < 0) {
             const subgraphNode = graph._subgraph_node;
             if (subgraphNode) {
-                sourceNode = findSourceThroughParent(subgraphNode, link.origin_slot, graph);
+                const result = findSourceThroughParent(subgraphNode, link.origin_slot, graph);
+                if (result) {
+                    sourceNode = result.node;
+                    originSlot = result.slot;
+                }
             } else {
                 // Search for parent subgraph node
                 for (const node of app.graph._nodes || []) {
                     if (node.subgraph === graph) {
-                        sourceNode = findSourceThroughParent(node, link.origin_slot, graph);
+                        const result = findSourceThroughParent(node, link.origin_slot, graph);
+                        if (result) {
+                            sourceNode = result.node;
+                            originSlot = result.slot;
+                        }
                         break;
                     }
                 }
