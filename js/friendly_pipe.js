@@ -1,5 +1,32 @@
 import { app } from "../../scripts/app.js";
 
+// Helper function to check if a node is a pass-through type
+function isPassThroughNode(node) {
+    if (!node) return false;
+    
+    // Known reroute types
+    if (node.type === "Reroute" || 
+        node.type === "ReroutePrimitive" ||
+        node.type === "PrimitiveNode") {
+        return true;
+    }
+    
+    // Subgraph input/output nodes
+    if (node.type === "graph/input" || 
+        node.type === "graph/output") {
+        return true;
+    }
+    
+    // Generic pass-through detection (1 input, 1 output, no custom slot handling)
+    if (node.inputs && node.inputs.length === 1 && 
+        node.outputs && node.outputs.length === 1 &&
+        node.slotCount === undefined) {
+        return true;
+    }
+    
+    return false;
+}
+
 // Helper function to traverse backwards through reroute/forwarding nodes to find the original source
 function findOriginalSource(node, slotIndex) {
     const visited = new Set();
@@ -17,24 +44,41 @@ function findOriginalSource(node, slotIndex) {
             return currentNode;
         }
         
-        // Check if this is a reroute or pass-through node
-        // Reroute nodes typically have 1 input and 1 output and just forward data
-        const isReroute = currentNode.type === "Reroute" || 
-                          currentNode.type === "ReroutePrimitive" ||
-                          (currentNode.inputs && currentNode.inputs.length === 1 && 
-                           currentNode.outputs && currentNode.outputs.length === 1);
-        
-        if (isReroute && currentNode.inputs && currentNode.inputs[0] && currentNode.inputs[0].link) {
-            // Follow the link backwards
-            const link = app.graph.links[currentNode.inputs[0].link];
-            if (link) {
-                currentNode = app.graph.getNodeById(link.origin_id);
-                currentSlot = link.origin_slot;
-                continue;
+        // Handle graph/input nodes (subgraph boundary) - need to exit to parent graph
+        if (currentNode.type === "graph/input") {
+            // Get the parent subgraph node and the corresponding input slot
+            const parentGraph = currentNode.graph?._subgraph_node?.graph;
+            const parentNode = currentNode.graph?._subgraph_node;
+            if (parentNode && parentGraph) {
+                // Find which input slot on parent corresponds to this graph/input
+                const inputIndex = currentNode.properties?.slot_index ?? 0;
+                const parentInput = parentNode.inputs?.[inputIndex];
+                if (parentInput && parentInput.link) {
+                    const link = parentGraph.links[parentInput.link];
+                    if (link) {
+                        currentNode = parentGraph.getNodeById(link.origin_id);
+                        currentSlot = link.origin_slot;
+                        continue;
+                    }
+                }
             }
         }
         
-        // Not a reroute or no more links to follow
+        // Check if this is a pass-through node
+        if (isPassThroughNode(currentNode)) {
+            const inputSlot = currentNode.inputs?.[0];
+            if (inputSlot && inputSlot.link) {
+                const graph = currentNode.graph || app.graph;
+                const link = graph.links[inputSlot.link];
+                if (link) {
+                    currentNode = graph.getNodeById(link.origin_id);
+                    currentSlot = link.origin_slot;
+                    continue;
+                }
+            }
+        }
+        
+        // Not a pass-through or no more links to follow
         break;
     }
     
@@ -43,17 +87,19 @@ function findOriginalSource(node, slotIndex) {
 
 // Helper function to traverse forwards through reroute/forwarding nodes to notify all connected outputs
 function notifyDownstreamNodes(node, slotIndex, visited = new Set()) {
+    const graph = node.graph || app.graph;
+    
     if (!node.outputs || !node.outputs[slotIndex] || !node.outputs[slotIndex].links) return;
     
     for (const linkId of node.outputs[slotIndex].links) {
-        const link = app.graph.links[linkId];
+        const link = graph.links[linkId];
         if (!link) continue;
         
-        const targetNode = app.graph.getNodeById(link.target_id);
+        const targetNode = graph.getNodeById(link.target_id);
         if (!targetNode) continue;
         
         // Prevent infinite loops
-        const nodeKey = `${targetNode.id}`;
+        const nodeKey = `${targetNode.id}-${graph.id || 'main'}`;
         if (visited.has(nodeKey)) continue;
         visited.add(nodeKey);
         
@@ -62,14 +108,32 @@ function notifyDownstreamNodes(node, slotIndex, visited = new Set()) {
             targetNode.syncWithSource();
         }
         
-        // If target is a reroute/pass-through, continue traversing
-        const isReroute = targetNode.type === "Reroute" || 
-                          targetNode.type === "ReroutePrimitive" ||
-                          (targetNode.inputs && targetNode.inputs.length === 1 && 
-                           targetNode.outputs && targetNode.outputs.length === 1 &&
-                           !targetNode.slotCount);
+        // Handle Subgraph nodes - enter the subgraph and notify from graph/input
+        if (targetNode.type === "graph/subgraph" || targetNode.subgraph) {
+            const subgraph = targetNode.subgraph;
+            if (subgraph) {
+                // Find the graph/input node that corresponds to this input slot
+                const targetInputSlot = link.target_slot;
+                const subgraphNodes = subgraph._nodes || [];
+                for (const innerNode of subgraphNodes) {
+                    if (innerNode.type === "graph/input") {
+                        const inputIndex = innerNode.properties?.slot_index ?? 0;
+                        if (inputIndex === targetInputSlot) {
+                            // Continue traversal from this graph/input node
+                            notifyDownstreamNodes(innerNode, 0, visited);
+                            break;
+                        }
+                    }
+                    // Also directly check for FriendlyPipeOut nodes inside
+                    if (innerNode.syncWithSource) {
+                        innerNode.syncWithSource();
+                    }
+                }
+            }
+        }
         
-        if (isReroute && targetNode.outputs) {
+        // If target is a pass-through, continue traversing
+        if (isPassThroughNode(targetNode) && targetNode.outputs) {
             notifyDownstreamNodes(targetNode, 0, visited);
         }
     }
