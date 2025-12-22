@@ -111,9 +111,42 @@ function findOriginalSource(node, slotIndex, depth = 0) {
         if (visited.has(nodeKey)) break;
         visited.add(nodeKey);
         
-        // Check if this node has the properties we're looking for (FriendlyPipeIn or FriendlyPipeOut)
+        // Check if this node has the properties we're looking for (FriendlyPipeIn or FriendlyPipeEdit)
         if (currentNode.slotCount !== undefined && currentNode.slotNames !== undefined) {
             return currentNode;
+        }
+        
+        // Handle Subgraph nodes - need to enter the subgraph and find the graph/output
+        if (currentNode.subgraph) {
+            const subgraph = currentNode.subgraph;
+            const outputSlot = currentSlot;
+            const subgraphNodes = subgraph._nodes || [];
+            
+            // Find the graph/output node that corresponds to this output slot
+            for (const innerNode of subgraphNodes) {
+                if (innerNode.type === "graph/output" || innerNode.type === "GraphOutput") {
+                    const outputIndex = innerNode.properties?.slot_index ?? 
+                                        innerNode.properties?.index ?? 
+                                        innerNode.slot_index ?? 0;
+                    if (outputIndex === outputSlot) {
+                        // Found the matching graph/output, trace back from its input
+                        const graphOutputInput = innerNode.inputs?.[0];
+                        if (graphOutputInput && graphOutputInput.link) {
+                            const innerLink = subgraph.links[graphOutputInput.link];
+                            if (innerLink) {
+                                const innerSource = subgraph.getNodeById(innerLink.origin_id);
+                                if (innerSource) {
+                                    // Recursively search inside the subgraph
+                                    const result = findOriginalSource(innerSource, innerLink.origin_slot, depth + 1);
+                                    if (result) return result;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+            break;
         }
         
         // Handle graph/input nodes (subgraph boundary) - need to exit to parent graph
@@ -196,6 +229,20 @@ function notifyDownstreamNodes(node, slotIndex, visited = new Set(), depth = 0) 
         // If target has syncWithSource, call it
         if (targetNode.syncWithSource) {
             targetNode.syncWithSource();
+        }
+        
+        // Handle graph/output nodes - exit subgraph and notify parent graph's downstream nodes
+        if (targetNode.type === "graph/output" || targetNode.type === "GraphOutput") {
+            const parentInfo = getParentSubgraphInfo(targetNode);
+            if (parentInfo) {
+                const { parentNode, parentGraph } = parentInfo;
+                // Find which output slot on parent corresponds to this graph/output
+                const outputIndex = targetNode.properties?.slot_index ?? 
+                                    targetNode.properties?.index ?? 
+                                    targetNode.slot_index ?? 0;
+                // Notify downstream nodes connected to the parent subgraph's output
+                notifyDownstreamNodes(parentNode, outputIndex, visited, depth + 1);
+            }
         }
         
         // Handle Subgraph nodes - enter the subgraph and notify from graph/input
