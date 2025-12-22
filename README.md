@@ -57,23 +57,55 @@ Bundles multiple inputs into a single pipe output.
 Unpacks a pipe back into individual outputs.
 
 **Features:**
-- Automatically syncs slot count and labels with the connected "Friendly Pipe In" node
+- Automatically syncs slot count and labels with the connected "Friendly Pipe In" or "Friendly Pipe Edit" node
 - Output slot types match the original input types
 - Updates dynamically when the source node changes
 
 **Usage:**
 1. Add the "Friendly Pipe Out" node to your workflow
-2. Connect the `pipe` input to a "Friendly Pipe In" node's output
+2. Connect the `pipe` input to a "Friendly Pipe In" or "Friendly Pipe Edit" node's output
 3. The output slots will automatically match the input node's configuration
 4. Connect the individual outputs to downstream nodes
 
-## Example Workflow
+### Friendly Pipe Edit
+
+Extends an existing pipe by adding new slots while preserving the original slots.
+
+**Features:**
+- Takes an existing pipe as input and passes it through with additional slots
+- Add/remove additional input slots dynamically with the ➕/➖ buttons
+- Label each additional slot with a custom name
+- Downstream "Friendly Pipe Out" nodes see all accumulated slots (original + new)
+- Can be chained multiple times to progressively add more slots
+
+**Usage:**
+1. Add the "Friendly Pipe Edit" node to your workflow
+2. Connect the `pipe` input to an existing "Friendly Pipe In" or another "Friendly Pipe Edit" node
+3. Click "➕ Add Slot" to add additional input slots
+4. Optionally rename slots using the Label fields
+5. Connect node outputs to the new input slots
+6. Connect the output `pipe` to a "Friendly Pipe Out" node or another "Friendly Pipe Edit"
+
+## Example Workflows
+
+### Basic Pipe
 
 ```
 [String Node] ──→ slot_1 (text)     ┐
 [Image Node]  ──→ slot_2 (image)    ├──→ [Friendly Pipe In] ──pipe──→ [Friendly Pipe Out] ──→ slot_1 (text)  ──→ [Show Text]
 [Model Node]  ──→ slot_3 (model)    ┘                                                     ──→ slot_2 (image) ──→ [Preview Image]
                                                                                           ──→ slot_3 (model) ──→ [KSampler]
+```
+
+### Extended Pipe with Edit Node
+
+```
+[String Node] ──→ slot_1 ┐                                                                      
+[Image Node]  ──→ slot_2 ├──→ [Friendly Pipe In] ──pipe──→ [Friendly Pipe Edit] ──pipe──→ [Friendly Pipe Out]
+                         ┘                                  ↑                                   ├──→ slot_1 (original)
+                                                   [VAE Node] ──→ slot_1 (vae)                  ├──→ slot_2 (original)
+                                                   [CLIP Node] ──→ slot_2 (clip)                ├──→ slot_3 (vae - added)
+                                                                                                └──→ slot_4 (clip - added)
 ```
 
 ## Use Cases
@@ -87,12 +119,13 @@ Unpacks a pipe back into individual outputs.
 
 ```
 comfyui-friendly-pipe/
-├── __init__.py           # Node registration and exports
-├── friendly_pipe_in.py   # FriendlyPipeIn node class
-├── friendly_pipe_out.py  # FriendlyPipeOut node class
-├── any_type.py           # AnyType class for universal type compatibility
+├── __init__.py            # Node registration and exports
+├── friendly_pipe_in.py    # FriendlyPipeIn node class
+├── friendly_pipe_out.py   # FriendlyPipeOut node class
+├── friendly_pipe_edit.py  # FriendlyPipeEdit node class
+├── any_type.py            # AnyType class for universal type compatibility
 ├── js/
-│   └── friendly_pipe.js  # Frontend JavaScript for dynamic UI
+│   └── friendly_pipe.js   # Frontend JavaScript for dynamic UI
 └── README.md
 ```
 

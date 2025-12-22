@@ -239,6 +239,10 @@ app.registerExtension({
         if (nodeData.name === "FriendlyPipeOut") {
             setupFriendlyPipeOut(nodeType, nodeData, app);
         }
+        
+        if (nodeData.name === "FriendlyPipeEdit") {
+            setupFriendlyPipeEdit(nodeType, nodeData, app);
+        }
     }
 });
 
@@ -657,32 +661,39 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
             return;
         }
         
-        // Traverse through reroute/subgraph nodes to find the original FriendlyPipeIn
+        // Traverse through reroute/subgraph nodes to find the original FriendlyPipeIn or FriendlyPipeEdit
         const sourceNode = findOriginalSource(immediateSource, originSlot);
         console.log("[FriendlyPipe] sourceNode from traversal:", sourceNode);
         
-        if (sourceNode && sourceNode.slotCount !== undefined) {
-            console.log("[FriendlyPipe] Found source with slotCount:", sourceNode.slotCount);
-            // Make sure source has latest types
-            if (sourceNode.updateSlotTypes) {
-                sourceNode.updateSlotTypes();
+        // Use the found source or fall back to immediate source
+        const effectiveSource = sourceNode || immediateSource;
+        
+        if (effectiveSource && effectiveSource.slotCount !== undefined) {
+            console.log("[FriendlyPipe] Found source with slotCount:", effectiveSource.slotCount);
+            
+            // Check if this is a FriendlyPipeEdit (has getTotalSlotCount method)
+            if (effectiveSource.getTotalSlotCount) {
+                console.log("[FriendlyPipe] Source is FriendlyPipeEdit, getting combined slots");
+                // Make sure source has latest types
+                if (effectiveSource.updateSlotTypes) {
+                    effectiveSource.updateSlotTypes();
+                }
+                this.updateFromSource(
+                    effectiveSource.getTotalSlotCount(),
+                    effectiveSource.getCombinedSlotNames(),
+                    effectiveSource.getCombinedSlotTypes()
+                );
+            } else {
+                // FriendlyPipeIn or other source
+                if (effectiveSource.updateSlotTypes) {
+                    effectiveSource.updateSlotTypes();
+                }
+                this.updateFromSource(
+                    effectiveSource.slotCount, 
+                    effectiveSource.slotNames || {},
+                    effectiveSource.slotTypes || {}
+                );
             }
-            this.updateFromSource(
-                sourceNode.slotCount, 
-                sourceNode.slotNames || {},
-                sourceNode.slotTypes || {}
-            );
-        } else if (immediateSource.slotCount !== undefined) {
-            console.log("[FriendlyPipe] Using immediate source with slotCount:", immediateSource.slotCount);
-            // Fallback to immediate source if traversal failed
-            if (immediateSource.updateSlotTypes) {
-                immediateSource.updateSlotTypes();
-            }
-            this.updateFromSource(
-                immediateSource.slotCount, 
-                immediateSource.slotNames || {},
-                immediateSource.slotTypes || {}
-            );
         } else {
             console.log("[FriendlyPipe] No valid source found");
         }
@@ -709,5 +720,345 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         if (o.slotCount !== undefined) {
             this.updateFromSource(o.slotCount, o.slotNames || {}, o.slotTypes || {});
         }
+    };
+}
+
+function setupFriendlyPipeEdit(nodeType, nodeData, app) {
+    const origOnNodeCreated = nodeType.prototype.onNodeCreated;
+    
+    nodeType.prototype.onNodeCreated = function() {
+        if (origOnNodeCreated) {
+            origOnNodeCreated.apply(this, arguments);
+        }
+        
+        const node = this;
+        
+        // Initialize slot count for additional slots (not including incoming pipe slots)
+        this.slotCount = 1;
+        this.slotNames = { 1: "slot_1" };
+        this.slotTypes = {};
+        
+        // Track incoming pipe info
+        this.incomingSlotCount = 0;
+        this.incomingSlotNames = {};
+        
+        // Remove all optional inputs except the first one
+        // Keep the pipe input (index 0) and first slot input (index 1)
+        while (this.inputs && this.inputs.length > 2) {
+            this.removeInput(this.inputs.length - 1);
+        }
+        
+        // Rename first additional slot
+        if (this.inputs && this.inputs.length > 1) {
+            this.inputs[1].label = this.slotNames[1];
+        }
+        
+        // Add name widget for slot 1 first (above buttons)
+        this.addSlotNameWidget(1);
+        
+        // Add control buttons
+        const addWidget = this.addWidget("button", "➕ Add Slot", null, () => {
+            if (node.slotCount < 80) {
+                node.slotCount++;
+                const defaultName = "slot_" + node.slotCount;
+                node.slotNames[node.slotCount] = defaultName;
+                
+                // Add new input slot
+                node.addInput("slot_" + node.slotCount, "*");
+                if (node.inputs && node.inputs.length > 0) {
+                    node.inputs[node.inputs.length - 1].label = defaultName;
+                }
+                
+                // Add name widget for the new slot (will be inserted before buttons)
+                node.addSlotNameWidget(node.slotCount);
+                node.updateSize();
+                node.notifyConnectedOutputs();
+                node.setDirtyCanvas(true, true);
+            }
+        });
+        addWidget.serialize = false;
+        
+        const removeWidget = this.addWidget("button", "➖ Remove Slot", null, () => {
+            if (node.slotCount > 1) {
+                // Remove the name widget
+                node.removeSlotNameWidget(node.slotCount);
+                
+                // Remove the input slot
+                node.removeInput(node.inputs.length - 1);
+                
+                delete node.slotNames[node.slotCount];
+                node.slotCount--;
+                node.updateSize();
+                node.notifyConnectedOutputs();
+                node.setDirtyCanvas(true, true);
+            }
+        });
+        removeWidget.serialize = false;
+        
+        // Store button references so we can insert widgets before them
+        this.addButton = addWidget;
+        this.removeButton = removeWidget;
+        
+        this.updateSize();
+    };
+    
+    nodeType.prototype.addSlotNameWidget = function(slotNum) {
+        const node = this;
+        const defaultName = node.slotNames[slotNum] || ("slot_" + slotNum);
+        
+        const nameWidget = this.addWidget("text", "Label " + slotNum, defaultName, (value) => {
+            node.slotNames[slotNum] = value;
+            // Update the input label (offset by 1 for pipe input)
+            const inputIndex = slotNum; // slotNum maps directly since pipe is at 0
+            if (node.inputs && node.inputs[inputIndex]) {
+                node.inputs[inputIndex].label = value;
+            }
+            node.notifyConnectedOutputs();
+            node.setDirtyCanvas(true, true);
+        });
+        nameWidget.slotNum = slotNum;
+        
+        // Move the widget before the buttons if they exist
+        if (this.widgets && this.addButton) {
+            const widgetIndex = this.widgets.indexOf(nameWidget);
+            const addButtonIndex = this.widgets.indexOf(this.addButton);
+            if (widgetIndex > addButtonIndex && addButtonIndex >= 0) {
+                // Remove from current position and insert before buttons
+                this.widgets.splice(widgetIndex, 1);
+                this.widgets.splice(addButtonIndex, 0, nameWidget);
+            }
+        }
+    };
+    
+    nodeType.prototype.removeSlotNameWidget = function(slotNum) {
+        if (this.widgets) {
+            const widgetIndex = this.widgets.findIndex(w => w.slotNum === slotNum);
+            if (widgetIndex >= 0) {
+                this.widgets.splice(widgetIndex, 1);
+            }
+        }
+    };
+    
+    nodeType.prototype.notifyConnectedOutputs = function() {
+        // Find all nodes connected to our output and notify them (traversing through reroutes)
+        if (!this.outputs || !this.outputs[0] || !this.outputs[0].links) return;
+        
+        notifyDownstreamNodes(this, 0, new Set([`${this.id}`]));
+    };
+    
+    nodeType.prototype.updateSize = function() {
+        this.setSize(this.computeSize());
+    };
+    
+    // Handle connection changes to sync with incoming pipe
+    const origOnConnectionsChange = nodeType.prototype.onConnectionsChange;
+    nodeType.prototype.onConnectionsChange = function(type, index, connected, linkInfo) {
+        if (origOnConnectionsChange) {
+            origOnConnectionsChange.apply(this, arguments);
+        }
+        
+        // When pipe input (index 0) connection changes, sync with source
+        if (type === 1 && index === 0) {
+            this.syncWithSource();
+        }
+        
+        // When any input connection changes, update types and notify downstream
+        if (type === 1) {
+            this.updateSlotTypes();
+            this.notifyConnectedOutputs();
+        }
+    };
+    
+    nodeType.prototype.syncWithSource = function() {
+        const graph = this.graph || app.graph;
+        
+        if (!this.inputs || !this.inputs[0] || !this.inputs[0].link) {
+            // No pipe connection, reset incoming info
+            this.incomingSlotCount = 0;
+            this.incomingSlotNames = {};
+            this.notifyConnectedOutputs();
+            return;
+        }
+        
+        const linkId = this.inputs[0].link;
+        const link = graph.links[linkId];
+        
+        if (!link) return;
+        
+        let sourceNode = null;
+        let originSlot = link.origin_slot;
+        
+        // Handle negative origin_id (subgraph input boundary)
+        if (link.origin_id < 0) {
+            const subgraphNode = graph._subgraph_node;
+            if (subgraphNode) {
+                sourceNode = findSourceThroughParent(subgraphNode, link.origin_slot, graph);
+            } else {
+                // Search for parent subgraph node
+                for (const node of app.graph._nodes || []) {
+                    if (node.subgraph === graph) {
+                        sourceNode = findSourceThroughParent(node, link.origin_slot, graph);
+                        break;
+                    }
+                }
+            }
+        } else {
+            sourceNode = graph.getNodeById(link.origin_id);
+        }
+        
+        if (!sourceNode) return;
+        
+        // Traverse through reroute nodes to find the original pipe source
+        const originalSource = findOriginalSource(sourceNode, originSlot);
+        const effectiveSource = originalSource || sourceNode;
+        
+        // Get combined slot info from source (could be FriendlyPipeIn or another FriendlyPipeEdit)
+        if (effectiveSource.slotCount !== undefined) {
+            // For FriendlyPipeEdit, we need to get the combined count
+            if (effectiveSource.getTotalSlotCount) {
+                this.incomingSlotCount = effectiveSource.getTotalSlotCount();
+                this.incomingSlotNames = effectiveSource.getCombinedSlotNames();
+            } else {
+                this.incomingSlotCount = effectiveSource.slotCount;
+                this.incomingSlotNames = effectiveSource.slotNames || {};
+            }
+        }
+        
+        this.notifyConnectedOutputs();
+    };
+    
+    // Get total slot count (incoming + our additional slots)
+    nodeType.prototype.getTotalSlotCount = function() {
+        return this.incomingSlotCount + this.slotCount;
+    };
+    
+    // Get combined slot names (incoming names + our additional names with offset indices)
+    nodeType.prototype.getCombinedSlotNames = function() {
+        const combined = {};
+        
+        // Copy incoming slot names
+        for (const [key, value] of Object.entries(this.incomingSlotNames)) {
+            combined[key] = value;
+        }
+        
+        // Add our slots with offset indices
+        for (let i = 1; i <= this.slotCount; i++) {
+            const newIndex = this.incomingSlotCount + i;
+            combined[newIndex] = this.slotNames[i] || ("slot_" + i);
+        }
+        
+        return combined;
+    };
+    
+    // Get combined slot types
+    nodeType.prototype.getCombinedSlotTypes = function() {
+        const combined = {};
+        
+        // Types from incoming pipe would be tracked by the FriendlyPipeIn
+        // Our additional slot types
+        for (let i = 1; i <= this.slotCount; i++) {
+            const newIndex = this.incomingSlotCount + i;
+            if (this.slotTypes[i]) {
+                combined[newIndex] = this.slotTypes[i];
+            }
+        }
+        
+        return combined;
+    };
+    
+    nodeType.prototype.updateSlotTypes = function() {
+        this.slotTypes = {};
+        
+        if (!this.inputs) return;
+        
+        // Start from index 1 to skip the pipe input
+        for (let i = 1; i < this.inputs.length; i++) {
+            const input = this.inputs[i];
+            if (input && input.link) {
+                const link = app.graph.links[input.link];
+                if (link) {
+                    const sourceNode = app.graph.getNodeById(link.origin_id);
+                    if (sourceNode && sourceNode.outputs && sourceNode.outputs[link.origin_slot]) {
+                        const outputType = sourceNode.outputs[link.origin_slot].type;
+                        this.slotTypes[i] = outputType; // i corresponds to slot number here
+                    }
+                }
+            }
+        }
+    };
+    
+    // Handle serialization
+    const origOnSerialize = nodeType.prototype.onSerialize;
+    nodeType.prototype.onSerialize = function(o) {
+        if (origOnSerialize) {
+            origOnSerialize.apply(this, arguments);
+        }
+        o.slotCount = this.slotCount;
+        o.slotNames = this.slotNames;
+        o.slotTypes = this.slotTypes;
+    };
+    
+    // Handle deserialization
+    const origOnConfigure = nodeType.prototype.onConfigure;
+    nodeType.prototype.onConfigure = function(o) {
+        if (origOnConfigure) {
+            origOnConfigure.apply(this, arguments);
+        }
+        
+        const node = this;
+        
+        if (o.slotNames) {
+            this.slotNames = o.slotNames;
+        }
+        if (o.slotTypes) {
+            this.slotTypes = o.slotTypes;
+        }
+        
+        if (o.slotCount !== undefined && o.slotCount > 1) {
+            // We already have 1 slot from onNodeCreated
+            // Add the remaining slots
+            for (let i = 2; i <= o.slotCount; i++) {
+                this.slotCount = i;
+                const name = this.slotNames[i] || ("slot_" + i);
+                this.slotNames[i] = name;
+                
+                // Add input if needed (offset by 1 for pipe input)
+                if (!this.inputs || this.inputs.length < i + 1) {
+                    this.addInput("slot_" + i, "*");
+                }
+                if (this.inputs && this.inputs[i]) {
+                    this.inputs[i].label = name;
+                }
+                
+                // Add name widget
+                this.addSlotNameWidget(i);
+            }
+        }
+        
+        // Update all input labels
+        if (this.inputs) {
+            for (let i = 1; i < this.inputs.length; i++) {
+                const slotNum = i;
+                if (this.slotNames[slotNum]) {
+                    this.inputs[i].label = this.slotNames[slotNum];
+                }
+            }
+        }
+        
+        // Update name widget values
+        if (this.widgets) {
+            for (const widget of this.widgets) {
+                if (widget.slotNum !== undefined && this.slotNames[widget.slotNum]) {
+                    widget.value = this.slotNames[widget.slotNum];
+                }
+            }
+        }
+        
+        this.updateSize();
+        
+        // Sync with source after configure
+        setTimeout(() => {
+            this.syncWithSource();
+        }, 100);
     };
 }
