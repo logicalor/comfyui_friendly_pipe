@@ -42,14 +42,19 @@ class FriendlyPipeIn:
         
         # Collect all connected slot values into a dictionary
         pipe_data = {
-            "slot_count": slot_count,
             "slots": {},
             "names": names_dict
         }
         
+        # Find the highest slot index that has data
+        max_slot = 0
         for i in range(1, self.MAX_SLOTS + 1):
             slot_key = f"slot_{i}"
             if slot_key in kwargs and kwargs[slot_key] is not None:
                 pipe_data["slots"][i] = kwargs[slot_key]
+                max_slot = i
+        
+        # Use the higher of: the UI slot_count or the actual max slot with data
+        pipe_data["slot_count"] = max(slot_count, max_slot)
         
         return (pipe_data,)

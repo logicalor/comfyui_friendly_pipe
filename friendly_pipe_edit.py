@@ -35,12 +35,6 @@ class FriendlyPipeEdit:
     def execute(self, pipe, slot_count=1, slot_names="{}", **kwargs):
         import json
         
-        print(f"[FriendlyPipeEdit] execute called")
-        print(f"[FriendlyPipeEdit] slot_count: {slot_count}")
-        print(f"[FriendlyPipeEdit] slot_names: {slot_names}")
-        print(f"[FriendlyPipeEdit] kwargs keys: {list(kwargs.keys())}")
-        print(f"[FriendlyPipeEdit] incoming pipe: {pipe}")
-        
         # Parse slot names from JSON string
         try:
             names_dict = json.loads(slot_names)
@@ -48,16 +42,20 @@ class FriendlyPipeEdit:
             names_dict = {}
         
         # Start with the incoming pipe data
-        incoming_slot_count = pipe.get("slot_count", 0)
         incoming_slots = pipe.get("slots", {})
         incoming_names = pipe.get("names", {})
         
-        print(f"[FriendlyPipeEdit] incoming_slot_count: {incoming_slot_count}")
-        print(f"[FriendlyPipeEdit] incoming_slots keys: {list(incoming_slots.keys())}")
+        # Calculate actual incoming slot count from the data (more reliable than slot_count field)
+        incoming_slot_count = 0
+        for key in incoming_slots.keys():
+            int_key = int(key) if isinstance(key, str) else key
+            incoming_slot_count = max(incoming_slot_count, int_key)
+        
+        # Also consider the pipe's reported slot_count (for empty slots)
+        incoming_slot_count = max(incoming_slot_count, pipe.get("slot_count", 0))
         
         # Create new pipe data combining incoming + new slots
         pipe_data = {
-            "slot_count": incoming_slot_count + slot_count,
             "slots": {},
             "names": {},
         }
@@ -72,20 +70,17 @@ class FriendlyPipeEdit:
             int_key = int(key) if isinstance(key, str) else key
             pipe_data["names"][int_key] = value
         
+        # Find the highest slot we're adding
+        max_new_slot = 0
+        
         # Add new slots with offset indices
         for i in range(1, slot_count + 1):
             slot_key = f"slot_{i}"
             new_index = incoming_slot_count + i
             
-            print(f"[FriendlyPipeEdit] checking slot_key: {slot_key}, new_index: {new_index}")
-            print(f"[FriendlyPipeEdit] slot_key in kwargs: {slot_key in kwargs}")
-            if slot_key in kwargs:
-                print(f"[FriendlyPipeEdit] kwargs[{slot_key}] is None: {kwargs[slot_key] is None}")
-                print(f"[FriendlyPipeEdit] kwargs[{slot_key}] type: {type(kwargs.get(slot_key))}")
-            
             if slot_key in kwargs and kwargs[slot_key] is not None:
                 pipe_data["slots"][new_index] = kwargs[slot_key]
-                print(f"[FriendlyPipeEdit] Added slot {new_index} from {slot_key}")
+                max_new_slot = max(max_new_slot, i)
             
             # Add names with offset
             if i in names_dict:
@@ -93,7 +88,7 @@ class FriendlyPipeEdit:
             elif str(i) in names_dict:
                 pipe_data["names"][new_index] = names_dict[str(i)]
         
-        print(f"[FriendlyPipeEdit] output pipe slots keys: {list(pipe_data['slots'].keys())}")
-        print(f"[FriendlyPipeEdit] output pipe slot_count: {pipe_data['slot_count']}")
+        # Calculate final slot count
+        pipe_data["slot_count"] = incoming_slot_count + max(slot_count, max_new_slot)
         
         return (pipe_data,)
