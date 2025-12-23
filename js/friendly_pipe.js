@@ -834,6 +834,7 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         // Track incoming pipe info
         this.incomingSlotCount = 0;
         this.incomingSlotNames = {};
+        this.incomingSlotTypes = {};
         
         // Remove all optional inputs except the first one
         // Keep the pipe input (index 0) and first slot input (index 1)
@@ -969,6 +970,7 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
             // No pipe connection, reset incoming info
             this.incomingSlotCount = 0;
             this.incomingSlotNames = {};
+            this.incomingSlotTypes = {};
             this.notifyConnectedOutputs();
             return;
         }
@@ -1019,9 +1021,15 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
             if (effectiveSource.getTotalSlotCount) {
                 this.incomingSlotCount = effectiveSource.getTotalSlotCount();
                 this.incomingSlotNames = effectiveSource.getCombinedSlotNames();
+                this.incomingSlotTypes = effectiveSource.getCombinedSlotTypes();
             } else {
                 this.incomingSlotCount = effectiveSource.slotCount;
                 this.incomingSlotNames = effectiveSource.slotNames || {};
+                // Make sure source has latest types
+                if (effectiveSource.updateSlotTypes) {
+                    effectiveSource.updateSlotTypes();
+                }
+                this.incomingSlotTypes = effectiveSource.slotTypes || {};
             }
         }
         
@@ -1055,8 +1063,14 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
     nodeType.prototype.getCombinedSlotTypes = function() {
         const combined = {};
         
-        // Types from incoming pipe would be tracked by the FriendlyPipeIn
-        // Our additional slot types
+        // Copy incoming slot types from upstream pipe
+        if (this.incomingSlotTypes) {
+            for (const [key, value] of Object.entries(this.incomingSlotTypes)) {
+                combined[key] = value;
+            }
+        }
+        
+        // Add our additional slot types with offset indices
         for (let i = 1; i <= this.slotCount; i++) {
             const newIndex = this.incomingSlotCount + i;
             if (this.slotTypes[i]) {
