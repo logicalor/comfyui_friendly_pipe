@@ -35,8 +35,11 @@ class FriendlyPipeOut:
         # Build output tuple - return None for empty/missing slots
         outputs = []
         for i in range(1, self.MAX_SLOTS + 1):
+            # Check both integer and string keys for robustness
             if i in pipe_slots:
                 outputs.append(pipe_slots[i])
+            elif str(i) in pipe_slots:
+                outputs.append(pipe_slots[str(i)])
             else:
                 outputs.append(None)
         

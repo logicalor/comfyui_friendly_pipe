@@ -49,9 +49,19 @@ class FriendlyPipeEdit:
         # Create new pipe data combining incoming + new slots
         pipe_data = {
             "slot_count": incoming_slot_count + slot_count,
-            "slots": dict(incoming_slots),  # Copy incoming slots
-            "names": dict(incoming_names),  # Copy incoming names
+            "slots": {},
+            "names": {},
         }
+        
+        # Copy incoming slots with integer keys (normalize from string if needed)
+        for key, value in incoming_slots.items():
+            int_key = int(key) if isinstance(key, str) else key
+            pipe_data["slots"][int_key] = value
+        
+        # Copy incoming names with integer keys (normalize from string if needed)  
+        for key, value in incoming_names.items():
+            int_key = int(key) if isinstance(key, str) else key
+            pipe_data["names"][int_key] = value
         
         # Add new slots with offset indices
         for i in range(1, slot_count + 1):
