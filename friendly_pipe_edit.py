@@ -35,6 +35,12 @@ class FriendlyPipeEdit:
     def execute(self, pipe, slot_count=1, slot_names="{}", **kwargs):
         import json
         
+        print(f"[FriendlyPipeEdit] execute called")
+        print(f"[FriendlyPipeEdit] slot_count: {slot_count}")
+        print(f"[FriendlyPipeEdit] slot_names: {slot_names}")
+        print(f"[FriendlyPipeEdit] kwargs keys: {list(kwargs.keys())}")
+        print(f"[FriendlyPipeEdit] incoming pipe: {pipe}")
+        
         # Parse slot names from JSON string
         try:
             names_dict = json.loads(slot_names)
@@ -45,6 +51,9 @@ class FriendlyPipeEdit:
         incoming_slot_count = pipe.get("slot_count", 0)
         incoming_slots = pipe.get("slots", {})
         incoming_names = pipe.get("names", {})
+        
+        print(f"[FriendlyPipeEdit] incoming_slot_count: {incoming_slot_count}")
+        print(f"[FriendlyPipeEdit] incoming_slots keys: {list(incoming_slots.keys())}")
         
         # Create new pipe data combining incoming + new slots
         pipe_data = {
@@ -68,13 +77,23 @@ class FriendlyPipeEdit:
             slot_key = f"slot_{i}"
             new_index = incoming_slot_count + i
             
+            print(f"[FriendlyPipeEdit] checking slot_key: {slot_key}, new_index: {new_index}")
+            print(f"[FriendlyPipeEdit] slot_key in kwargs: {slot_key in kwargs}")
+            if slot_key in kwargs:
+                print(f"[FriendlyPipeEdit] kwargs[{slot_key}] is None: {kwargs[slot_key] is None}")
+                print(f"[FriendlyPipeEdit] kwargs[{slot_key}] type: {type(kwargs.get(slot_key))}")
+            
             if slot_key in kwargs and kwargs[slot_key] is not None:
                 pipe_data["slots"][new_index] = kwargs[slot_key]
+                print(f"[FriendlyPipeEdit] Added slot {new_index} from {slot_key}")
             
             # Add names with offset
             if i in names_dict:
                 pipe_data["names"][new_index] = names_dict[i]
             elif str(i) in names_dict:
                 pipe_data["names"][new_index] = names_dict[str(i)]
+        
+        print(f"[FriendlyPipeEdit] output pipe slots keys: {list(pipe_data['slots'].keys())}")
+        print(f"[FriendlyPipeEdit] output pipe slot_count: {pipe_data['slot_count']}")
         
         return (pipe_data,)
