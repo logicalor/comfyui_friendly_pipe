@@ -1183,4 +1183,23 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
             this.syncWithSource();
         }, 100);
     };
+    
+    // Override onExecutionStart to pass slot info to Python backend
+    const origOnExecutionStart = nodeType.prototype.onExecutionStart;
+    nodeType.prototype.onExecutionStart = function() {
+        if (origOnExecutionStart) {
+            origOnExecutionStart.apply(this, arguments);
+        }
+        // Update widgets for execution
+        if (this.widgets) {
+            const slotCountWidget = this.widgets.find(w => w.name === "slot_count");
+            if (slotCountWidget) {
+                slotCountWidget.value = this.slotCount;
+            }
+            const slotNamesWidget = this.widgets.find(w => w.name === "slot_names");
+            if (slotNamesWidget) {
+                slotNamesWidget.value = JSON.stringify(this.slotNames);
+            }
+        }
+    };
 }
