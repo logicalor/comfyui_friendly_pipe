@@ -474,12 +474,14 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
         
         if (!this.inputs) return;
         
+        const graph = this.graph || app.graph;
+        
         for (let i = 0; i < this.inputs.length; i++) {
             const input = this.inputs[i];
             if (input && input.link) {
-                const link = app.graph.links[input.link];
+                const link = graph.links[input.link];
                 if (link) {
-                    const sourceNode = app.graph.getNodeById(link.origin_id);
+                    const sourceNode = graph.getNodeById(link.origin_id);
                     if (sourceNode && sourceNode.outputs && sourceNode.outputs[link.origin_slot]) {
                         const outputType = sourceNode.outputs[link.origin_slot].type;
                         this.slotTypes[i + 1] = outputType;
@@ -1061,6 +1063,9 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
     
     // Get combined slot types
     nodeType.prototype.getCombinedSlotTypes = function() {
+        // Make sure our slot types are up to date
+        this.updateSlotTypes();
+        
         const combined = {};
         
         // Copy incoming slot types from upstream pipe
@@ -1086,13 +1091,15 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         
         if (!this.inputs) return;
         
+        const graph = this.graph || app.graph;
+        
         // Start from index 1 to skip the pipe input
         for (let i = 1; i < this.inputs.length; i++) {
             const input = this.inputs[i];
             if (input && input.link) {
-                const link = app.graph.links[input.link];
+                const link = graph.links[input.link];
                 if (link) {
-                    const sourceNode = app.graph.getNodeById(link.origin_id);
+                    const sourceNode = graph.getNodeById(link.origin_id);
                     if (sourceNode && sourceNode.outputs && sourceNode.outputs[link.origin_slot]) {
                         const outputType = sourceNode.outputs[link.origin_slot].type;
                         this.slotTypes[i] = outputType; // i corresponds to slot number here
