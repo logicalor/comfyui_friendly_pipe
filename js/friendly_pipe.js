@@ -72,19 +72,38 @@ function getParentSubgraphInfo(node) {
     const graph = node.graph;
     if (!graph) return null;
     
+    console.log("[FriendlyPipe] getParentSubgraphInfo for node:", node.type, node.id);
+    console.log("[FriendlyPipe] graph._subgraph_node:", graph._subgraph_node);
+    console.log("[FriendlyPipe] graph.parentNode:", graph.parentNode);
+    
     // Try various ways to get the parent subgraph node
     let parentNode = graph._subgraph_node || graph.parentNode || graph._parentNode;
     let parentGraph = parentNode?.graph || app.graph;
     
     // If we're in a subgraph, the graph might have a reference to its container
-    if (!parentNode && graph._is_subgraph) {
-        // Search main graph for subgraph nodes containing this graph
-        for (const n of app.graph._nodes || []) {
-            if (n.subgraph === graph) {
-                parentNode = n;
-                parentGraph = app.graph;
-                break;
+    if (!parentNode) {
+        // Search all graphs recursively for a subgraph node containing this graph
+        const searchForParent = (searchGraph, depth = 0) => {
+            if (depth > 10) return null;
+            
+            for (const n of searchGraph._nodes || []) {
+                if (n.subgraph === graph) {
+                    console.log("[FriendlyPipe] Found parent node in graph at depth", depth, ":", n);
+                    return { parentNode: n, parentGraph: searchGraph };
+                }
+                // If this node has a subgraph, search inside it too
+                if (n.subgraph) {
+                    const result = searchForParent(n.subgraph, depth + 1);
+                    if (result) return result;
+                }
             }
+            return null;
+        };
+        
+        const result = searchForParent(app.graph);
+        if (result) {
+            parentNode = result.parentNode;
+            parentGraph = result.parentGraph;
         }
     }
     
