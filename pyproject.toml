@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-friendly-pipe"
 description = "Flexible pipe nodes for bundling and unbundling multiple connections of any type in ComfyUI"
-version = "1.2.5"
+version = "1.2.6"
 license = "MIT"
 readme = "README.md"
 
