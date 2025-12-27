@@ -1,23 +1,31 @@
 import { app } from "../../scripts/app.js";
+import { config } from "./config.js";
+
+// Debug logging helper
+function debugLog(...args) {
+    if (config.debug) {
+        console.log("[FriendlyPipe]", ...args);
+    }
+}
 
 // Helper function to find source through parent subgraph node
 // Returns { node, slot } or null
 function findSourceThroughParent(subgraphNode, inputSlotIndex, subgraph) {
-    console.log("[FriendlyPipe] findSourceThroughParent called");
-    console.log("[FriendlyPipe] subgraphNode:", subgraphNode);
-    console.log("[FriendlyPipe] subgraphNode.inputs:", subgraphNode?.inputs);
-    console.log("[FriendlyPipe] inputSlotIndex:", inputSlotIndex);
+    debugLog("findSourceThroughParent called");
+    debugLog("subgraphNode:", subgraphNode);
+    debugLog("subgraphNode.inputs:", subgraphNode?.inputs);
+    debugLog("inputSlotIndex:", inputSlotIndex);
     
     if (!subgraphNode || !subgraphNode.inputs) return null;
     
     // The origin_slot from the link inside the subgraph should map to the parent's input
     const parentInput = subgraphNode.inputs[inputSlotIndex];
-    console.log("[FriendlyPipe] parentInput:", parentInput);
+    debugLog("parentInput:", parentInput);
     
     if (parentInput && parentInput.link) {
         const parentGraph = subgraphNode.graph || app.graph;
         const parentLink = parentGraph.links[parentInput.link];
-        console.log("[FriendlyPipe] parentLink:", parentLink);
+        debugLog("parentLink:", parentLink);
         
         if (parentLink) {
             // Recursively handle if parent is also in a subgraph
@@ -30,7 +38,7 @@ function findSourceThroughParent(subgraphNode, inputSlotIndex, subgraph) {
             }
             
             const source = parentGraph.getNodeById(parentLink.origin_id);
-            console.log("[FriendlyPipe] Found source:", source, "slot:", parentLink.origin_slot);
+            debugLog("Found source:", source, "slot:", parentLink.origin_slot);
             return { node: source, slot: parentLink.origin_slot };
         }
     }
@@ -72,9 +80,9 @@ function getParentSubgraphInfo(node) {
     const graph = node.graph;
     if (!graph) return null;
     
-    console.log("[FriendlyPipe] getParentSubgraphInfo for node:", node.type, node.id);
-    console.log("[FriendlyPipe] graph._subgraph_node:", graph._subgraph_node);
-    console.log("[FriendlyPipe] graph.parentNode:", graph.parentNode);
+    debugLog("getParentSubgraphInfo for node:", node.type, node.id);
+    debugLog("graph._subgraph_node:", graph._subgraph_node);
+    debugLog("graph.parentNode:", graph.parentNode);
     
     // Try various ways to get the parent subgraph node
     let parentNode = graph._subgraph_node || graph.parentNode || graph._parentNode;
@@ -88,7 +96,7 @@ function getParentSubgraphInfo(node) {
             
             for (const n of searchGraph._nodes || []) {
                 if (n.subgraph === graph) {
-                    console.log("[FriendlyPipe] Found parent node in graph at depth", depth, ":", n);
+                    debugLog("Found parent node in graph at depth", depth, ":", n);
                     return { parentNode: n, parentGraph: searchGraph };
                 }
                 // If this node has a subgraph, search inside it too
@@ -133,35 +141,35 @@ function findOriginalSource(node, slotIndex, depth = 0) {
         
         // Check if this node has the properties we're looking for (FriendlyPipeIn or FriendlyPipeEdit)
         if (currentNode.slotCount !== undefined && currentNode.slotNames !== undefined) {
-            console.log("[FriendlyPipe] findOriginalSource: Found source node:", currentNode.type, currentNode.id);
+            debugLog("findOriginalSource: Found source node:", currentNode.type, currentNode.id);
             return currentNode;
         }
         
         // Handle Subgraph nodes - need to enter the subgraph and find the source connected to the output
         if (currentNode.subgraph) {
-            console.log("[FriendlyPipe] findOriginalSource: Entering subgraph node, outputSlot:", currentSlot);
+            debugLog("findOriginalSource: Entering subgraph node, outputSlot:", currentSlot);
             const subgraph = currentNode.subgraph;
             const outputSlot = currentSlot;
             
             // Check if subgraph.outputs defines the output mappings (ComfyUI style)
             if (subgraph.outputs && subgraph.outputs[outputSlot]) {
                 const outputDef = subgraph.outputs[outputSlot];
-                console.log("[FriendlyPipe] findOriginalSource: outputDef:", outputDef);
+                debugLog("findOriginalSource: outputDef:", outputDef);
                 
                 // SubgraphOutput has linkIds array containing internal link IDs
                 const linkIds = outputDef.linkIds || outputDef.links || [];
-                console.log("[FriendlyPipe] findOriginalSource: linkIds:", linkIds);
+                debugLog("findOriginalSource: linkIds:", linkIds);
                 
                 if (linkIds.length > 0) {
                     const innerLinkId = linkIds[0]; // Take the first link
                     const innerLink = subgraph.links[innerLinkId];
-                    console.log("[FriendlyPipe] findOriginalSource: inner link:", innerLink);
+                    debugLog("findOriginalSource: inner link:", innerLink);
                     if (innerLink) {
                         const innerSource = subgraph.getNodeById(innerLink.origin_id);
-                        console.log("[FriendlyPipe] findOriginalSource: inner source:", innerSource?.type, innerSource?.id);
+                        debugLog("findOriginalSource: inner source:", innerSource?.type, innerSource?.id);
                         if (innerSource) {
                             const result = findOriginalSource(innerSource, innerLink.origin_slot, depth + 1);
-                            console.log("[FriendlyPipe] findOriginalSource: recursive result:", result?.type, result?.id);
+                            debugLog("findOriginalSource: recursive result:", result?.type, result?.id);
                             if (result) return result;
                         }
                     }
@@ -170,7 +178,7 @@ function findOriginalSource(node, slotIndex, depth = 0) {
                 // Also check for a single 'link' property
                 if (outputDef.link !== undefined && outputDef.link !== null) {
                     const innerLink = subgraph.links[outputDef.link];
-                    console.log("[FriendlyPipe] findOriginalSource: inner link from .link:", innerLink);
+                    debugLog("findOriginalSource: inner link from .link:", innerLink);
                     if (innerLink) {
                         const innerSource = subgraph.getNodeById(innerLink.origin_id);
                         if (innerSource) {
@@ -204,7 +212,7 @@ function findOriginalSource(node, slotIndex, depth = 0) {
                     }
                 }
             }
-            console.log("[FriendlyPipe] findOriginalSource: No source found in subgraph");
+            debugLog("findOriginalSource: No source found in subgraph");
             break;
         }
         
@@ -271,7 +279,7 @@ function notifyDownstreamNodes(node, slotIndex, visited = new Set(), depth = 0) 
     
     const graph = node.graph || app.graph;
     
-    console.log("[FriendlyPipe] notifyDownstreamNodes called:", {
+    debugLog("notifyDownstreamNodes called:", {
         nodeType: node.type,
         nodeId: node.id,
         slotIndex,
@@ -290,12 +298,12 @@ function notifyDownstreamNodes(node, slotIndex, visited = new Set(), depth = 0) 
             // Link might be in the parent/root graph for cross-subgraph connections
             link = app.graph.links instanceof Map ? app.graph.links.get(linkId) : app.graph.links?.[linkId];
         }
-        console.log("[FriendlyPipe] Processing linkId:", linkId, "link:", link);
+        debugLog("Processing linkId:", linkId, "link:", link);
         if (!link) continue;
         
         // Handle negative target_id (subgraph output boundary)
         if (link.target_id < 0) {
-            console.log("[FriendlyPipe] Negative target_id detected - subgraph output boundary");
+            debugLog("Negative target_id detected - subgraph output boundary");
             // This connection goes to a subgraph output
             // We need to find the parent subgraph node and notify nodes connected to its output
             const parentInfo = getParentSubgraphInfo(node);
@@ -304,7 +312,7 @@ function notifyDownstreamNodes(node, slotIndex, visited = new Set(), depth = 0) 
                 // The target_slot on a subgraph output boundary maps to the parent's output slot
                 // But we need to figure out which output slot on the parent corresponds to this
                 const outputSlotOnParent = link.target_slot;
-                console.log("[FriendlyPipe] Found parent subgraph, notifying from output slot:", outputSlotOnParent);
+                debugLog("Found parent subgraph, notifying from output slot:", outputSlotOnParent);
                 notifyDownstreamNodes(parentNode, outputSlotOnParent, visited, depth + 1);
             }
             continue;
@@ -315,10 +323,10 @@ function notifyDownstreamNodes(node, slotIndex, visited = new Set(), depth = 0) 
         if (!targetNode && graph !== app.graph) {
             targetNode = app.graph.getNodeById(link.target_id);
         }
-        console.log("[FriendlyPipe] link.target_id:", link.target_id, "targetNode:", targetNode);
+        debugLog("link.target_id:", link.target_id, "targetNode:", targetNode);
         if (!targetNode) continue;
         
-        console.log("[FriendlyPipe] Found target node:", {
+        debugLog("Found target node:", {
             targetType: targetNode.type,
             targetId: targetNode.id,
             hasSyncWithSource: !!targetNode.syncWithSource
@@ -331,7 +339,7 @@ function notifyDownstreamNodes(node, slotIndex, visited = new Set(), depth = 0) 
         
         // If target has syncWithSource, call it
         if (targetNode.syncWithSource) {
-            console.log("[FriendlyPipe] Calling syncWithSource on", targetNode.type, targetNode.id);
+            debugLog("Calling syncWithSource on", targetNode.type, targetNode.id);
             targetNode.syncWithSource();
         }
         
@@ -741,25 +749,25 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
     nodeType.prototype.syncWithSource = function() {
         const graph = this.graph || app.graph;
         
-        console.log("[FriendlyPipe] syncWithSource called on node", this.id);
-        console.log("[FriendlyPipe] this.graph:", this.graph);
-        console.log("[FriendlyPipe] this.inputs:", this.inputs);
+        debugLog("syncWithSource called on node", this.id);
+        debugLog("this.graph:", this.graph);
+        debugLog("this.inputs:", this.inputs);
         
         if (!this.inputs || !this.inputs[0] || !this.inputs[0].link) {
-            console.log("[FriendlyPipe] No connection, resetting to default");
+            debugLog("No connection, resetting to default");
             // No connection, reset to default
             this.updateFromSource(1, {}, {});
             return;
         }
         
         const linkId = this.inputs[0].link;
-        console.log("[FriendlyPipe] linkId:", linkId);
+        debugLog("linkId:", linkId);
         
         const link = graph.links[linkId];
-        console.log("[FriendlyPipe] link:", link);
+        debugLog("link:", link);
         
         if (!link) {
-            console.log("[FriendlyPipe] Link not found in graph.links");
+            debugLog("Link not found in graph.links");
             return;
         }
         
@@ -768,12 +776,12 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         
         // Handle negative origin_id (subgraph input boundary)
         if (link.origin_id < 0) {
-            console.log("[FriendlyPipe] Negative origin_id detected, this is a subgraph input");
-            console.log("[FriendlyPipe] graph._subgraph_node:", graph._subgraph_node);
-            console.log("[FriendlyPipe] graph.inputs:", graph.inputs);
-            console.log("[FriendlyPipe] graph._inputs:", graph._inputs);
-            console.log("[FriendlyPipe] graph.config:", graph.config);
-            console.log("[FriendlyPipe] All graph keys:", Object.keys(graph));
+            debugLog("Negative origin_id detected, this is a subgraph input");
+            debugLog("graph._subgraph_node:", graph._subgraph_node);
+            debugLog("graph.inputs:", graph.inputs);
+            debugLog("graph._inputs:", graph._inputs);
+            debugLog("graph.config:", graph.config);
+            debugLog("All graph keys:", Object.keys(graph));
             
             // In LiteGraph, the subgraph stores input info in graph.inputs array
             // The negative ID maps to the input: -1 = first input, -2 = second, etc.
@@ -783,11 +791,11 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
             
             // Also try to find parent through other means
             if (!subgraphNode) {
-                console.log("[FriendlyPipe] No _subgraph_node, searching app.graph for parent...");
+                debugLog("No _subgraph_node, searching app.graph for parent...");
                 // Search all graphs for a subgraph containing this graph
                 for (const node of app.graph._nodes || []) {
                     if (node.subgraph === graph) {
-                        console.log("[FriendlyPipe] Found parent node:", node);
+                        debugLog("Found parent node:", node);
                         const result = findSourceThroughParent(node, link.origin_slot, graph);
                         if (result) {
                             immediateSource = result.node;
@@ -808,37 +816,37 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
             
             // Try using the graph.inputs array which defines subgraph inputs
             if (!immediateSource && graph.inputs) {
-                console.log("[FriendlyPipe] Trying graph.inputs array");
+                debugLog("Trying graph.inputs array");
                 // Find the input definition that matches our slot
                 const inputDef = graph.inputs[link.origin_slot];
-                console.log("[FriendlyPipe] inputDef:", inputDef);
+                debugLog("inputDef:", inputDef);
             }
         } else {
             immediateSource = graph.getNodeById(link.origin_id);
         }
         
-        console.log("[FriendlyPipe] immediateSource:", immediateSource);
-        console.log("[FriendlyPipe] immediateSource.type:", immediateSource?.type);
-        console.log("[FriendlyPipe] originSlot:", originSlot);
+        debugLog("immediateSource:", immediateSource);
+        debugLog("immediateSource.type:", immediateSource?.type);
+        debugLog("originSlot:", originSlot);
         
         if (!immediateSource) {
-            console.log("[FriendlyPipe] No immediate source found");
+            debugLog("No immediate source found");
             return;
         }
         
         // Traverse through reroute/subgraph nodes to find the original FriendlyPipeIn or FriendlyPipeEdit
         const sourceNode = findOriginalSource(immediateSource, originSlot);
-        console.log("[FriendlyPipe] sourceNode from traversal:", sourceNode);
+        debugLog("sourceNode from traversal:", sourceNode);
         
         // Use the found source or fall back to immediate source
         const effectiveSource = sourceNode || immediateSource;
         
         if (effectiveSource && effectiveSource.slotCount !== undefined) {
-            console.log("[FriendlyPipe] Found source with slotCount:", effectiveSource.slotCount);
+            debugLog("Found source with slotCount:", effectiveSource.slotCount);
             
             // Check if this is a FriendlyPipeEdit (has getTotalSlotCount method)
             if (effectiveSource.getTotalSlotCount) {
-                console.log("[FriendlyPipe] Source is FriendlyPipeEdit, getting combined slots");
+                debugLog("Source is FriendlyPipeEdit, getting combined slots");
                 // Make sure source has latest types
                 if (effectiveSource.updateSlotTypes) {
                     effectiveSource.updateSlotTypes();
@@ -860,7 +868,7 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
                 );
             }
         } else {
-            console.log("[FriendlyPipe] No valid source found");
+            debugLog("No valid source found");
         }
     };
     
