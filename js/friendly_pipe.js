@@ -898,11 +898,13 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         
         // Special case: if connected to a FriendlyPipeOut's output slot, check if that slot
         // contains a FRIENDLY_PIPE and trace back to its original source
-        if (immediateSource.type === "FriendlyPipeOut" && originSlot > 0) {
-            debugLog("Connected to FriendlyPipeOut output slot", originSlot);
+        if (immediateSource.type === "FriendlyPipeOut") {
+            // originSlot is 0-indexed, but our slotTypes/slotSources are 1-indexed
+            const slotNum = originSlot + 1;
+            debugLog("Connected to FriendlyPipeOut output slot", originSlot, "-> slotNum", slotNum);
             // This FriendlyPipeOut is outputting individual slots
             // Check if the slot type is FRIENDLY_PIPE
-            const slotType = immediateSource.slotTypes?.[originSlot];
+            const slotType = immediateSource.slotTypes?.[slotNum];
             debugLog("Slot type:", slotType);
             
             if (slotType === "FRIENDLY_PIPE") {
@@ -915,9 +917,11 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
                         const pipeInNode = graph.getNodeById(pipeOutLink.origin_id);
                         // Find the original FriendlyPipeIn/Edit
                         const pipeSource = findOriginalSource(pipeInNode, pipeOutLink.origin_slot);
+                        debugLog("pipeSource:", pipeSource);
                         if (pipeSource && pipeSource.getSlotSource) {
                             // Get the source for this specific slot
-                            const slotSource = pipeSource.getSlotSource(originSlot);
+                            const slotSource = pipeSource.getSlotSource(slotNum);
+                            debugLog("Found slot source:", slotSource);
                             debugLog("Found slot source:", slotSource);
                             if (slotSource) {
                                 if (slotSource.updateSlotTypes) {
