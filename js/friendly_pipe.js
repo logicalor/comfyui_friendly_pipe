@@ -912,37 +912,67 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
                 // First, find the FriendlyPipeIn that feeds this FriendlyPipeOut
                 const pipeOutInput = immediateSource.inputs?.[0];
                 if (pipeOutInput && pipeOutInput.link) {
-                    const pipeOutLink = graph.links[pipeOutInput.link];
+                    // Get the graph where the immediateSource lives
+                    const sourceGraph = immediateSource.graph || graph;
+                    // Handle Map or object for links
+                    const pipeOutLink = sourceGraph.links instanceof Map 
+                        ? sourceGraph.links.get(pipeOutInput.link) 
+                        : sourceGraph.links?.[pipeOutInput.link];
+                    debugLog("pipeOutLink:", pipeOutLink);
                     if (pipeOutLink) {
-                        const pipeInNode = graph.getNodeById(pipeOutLink.origin_id);
-                        // Find the original FriendlyPipeIn/Edit
-                        const pipeSource = findOriginalSource(pipeInNode, pipeOutLink.origin_slot);
-                        debugLog("pipeSource:", pipeSource);
-                        if (pipeSource && pipeSource.getSlotSource) {
-                            // Get the source for this specific slot
-                            const slotSource = pipeSource.getSlotSource(slotNum);
-                            debugLog("Found slot source:", slotSource);
-                            debugLog("Found slot source:", slotSource);
-                            if (slotSource) {
-                                if (slotSource.updateSlotTypes) {
-                                    slotSource.updateSlotTypes();
+                        let pipeInNode = null;
+                        
+                        // Handle negative origin_id (subgraph input boundary)
+                        if (pipeOutLink.origin_id < 0) {
+                            debugLog("FriendlyPipeOut's source is a subgraph input boundary");
+                            // Need to trace through the subgraph boundary
+                            const parentInfo = getParentSubgraphInfo(immediateSource);
+                            if (parentInfo) {
+                                const { parentNode, parentGraph } = parentInfo;
+                                const parentInput = parentNode.inputs?.[pipeOutLink.origin_slot];
+                                if (parentInput && parentInput.link) {
+                                    const parentLink = parentGraph.links instanceof Map
+                                        ? parentGraph.links.get(parentInput.link)
+                                        : parentGraph.links?.[parentInput.link];
+                                    if (parentLink) {
+                                        pipeInNode = parentGraph.getNodeById(parentLink.origin_id);
+                                        debugLog("Found pipeInNode through parent:", pipeInNode);
+                                    }
                                 }
-                                if (slotSource.getTotalSlotCount) {
-                                    this.updateFromSource(
-                                        slotSource.getTotalSlotCount(),
-                                        slotSource.getCombinedSlotNames(),
-                                        slotSource.getCombinedSlotTypes(),
-                                        slotSource.slotSources || {}
-                                    );
-                                } else {
-                                    this.updateFromSource(
-                                        slotSource.slotCount,
-                                        slotSource.slotNames || {},
-                                        slotSource.slotTypes || {},
-                                        slotSource.slotSources || {}
-                                    );
+                            }
+                        } else {
+                            pipeInNode = sourceGraph.getNodeById(pipeOutLink.origin_id);
+                        }
+                        
+                        if (pipeInNode) {
+                            // Find the original FriendlyPipeIn/Edit
+                            const pipeSource = findOriginalSource(pipeInNode, pipeOutLink.origin_slot);
+                            debugLog("pipeSource:", pipeSource);
+                            if (pipeSource && pipeSource.getSlotSource) {
+                                // Get the source for this specific slot
+                                const slotSource = pipeSource.getSlotSource(slotNum);
+                                debugLog("Found slot source:", slotSource);
+                                if (slotSource) {
+                                    if (slotSource.updateSlotTypes) {
+                                        slotSource.updateSlotTypes();
+                                    }
+                                    if (slotSource.getTotalSlotCount) {
+                                        this.updateFromSource(
+                                            slotSource.getTotalSlotCount(),
+                                            slotSource.getCombinedSlotNames(),
+                                            slotSource.getCombinedSlotTypes(),
+                                            slotSource.slotSources || {}
+                                        );
+                                    } else {
+                                        this.updateFromSource(
+                                            slotSource.slotCount,
+                                            slotSource.slotNames || {},
+                                            slotSource.slotTypes || {},
+                                            slotSource.slotSources || {}
+                                        );
+                                    }
+                                    return;
                                 }
-                                return;
                             }
                         }
                     }
