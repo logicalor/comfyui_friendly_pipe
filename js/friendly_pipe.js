@@ -266,9 +266,11 @@ function notifyDownstreamNodes(node, slotIndex, visited = new Set(), depth = 0) 
     
     for (const linkId of node.outputs[slotIndex].links) {
         const link = graph.links[linkId];
+        console.log("[FriendlyPipe] Processing linkId:", linkId, "link:", link, "graph:", graph, "graph.links keys sample:", Object.keys(graph.links || {}).slice(0, 10));
         if (!link) continue;
         
         const targetNode = graph.getNodeById(link.target_id);
+        console.log("[FriendlyPipe] link.target_id:", link.target_id, "targetNode:", targetNode);
         if (!targetNode) continue;
         
         console.log("[FriendlyPipe] Found target node:", {
