@@ -1058,11 +1058,13 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         this.slotCount = 1;
         this.slotNames = { 1: "slot_1" };
         this.slotTypes = {};
+        this.slotSources = {};
         
         // Track incoming pipe info
         this.incomingSlotCount = 0;
         this.incomingSlotNames = {};
         this.incomingSlotTypes = {};
+        this.incomingSlotSources = {};
         
         // Remove all optional inputs except the first one
         // Keep the pipe input (index 0) and first slot input (index 1)
@@ -1199,6 +1201,7 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
             this.incomingSlotCount = 0;
             this.incomingSlotNames = {};
             this.incomingSlotTypes = {};
+            this.incomingSlotSources = {};
             this.notifyConnectedOutputs();
             return;
         }
@@ -1250,6 +1253,7 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
                 this.incomingSlotCount = effectiveSource.getTotalSlotCount();
                 this.incomingSlotNames = effectiveSource.getCombinedSlotNames();
                 this.incomingSlotTypes = effectiveSource.getCombinedSlotTypes();
+                this.incomingSlotSources = effectiveSource.getCombinedSlotSources ? effectiveSource.getCombinedSlotSources() : {};
             } else {
                 this.incomingSlotCount = effectiveSource.slotCount;
                 this.incomingSlotNames = effectiveSource.slotNames || {};
@@ -1258,6 +1262,7 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
                     effectiveSource.updateSlotTypes();
                 }
                 this.incomingSlotTypes = effectiveSource.slotTypes || {};
+                this.incomingSlotSources = effectiveSource.slotSources || {};
             }
         }
         
@@ -1312,8 +1317,42 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         return combined;
     };
     
+    // Get combined slot sources (incoming sources + our additional sources with offset indices)
+    nodeType.prototype.getCombinedSlotSources = function() {
+        const combined = {};
+        
+        // Copy incoming slot sources from upstream pipe
+        if (this.incomingSlotSources) {
+            for (const [key, value] of Object.entries(this.incomingSlotSources)) {
+                combined[key] = value;
+            }
+        }
+        
+        // Add our additional slot sources with offset indices
+        for (let i = 1; i <= this.slotCount; i++) {
+            const newIndex = this.incomingSlotCount + i;
+            if (this.slotSources[i]) {
+                combined[newIndex] = this.slotSources[i];
+            }
+        }
+        
+        return combined;
+    };
+    
+    // Get the source node for a specific slot (used by downstream FriendlyPipeOut)
+    nodeType.prototype.getSlotSource = function(slotIndex) {
+        // Check if it's an incoming slot or one of our additional slots
+        if (slotIndex <= this.incomingSlotCount) {
+            return this.incomingSlotSources?.[slotIndex] || null;
+        } else {
+            const ourSlotIndex = slotIndex - this.incomingSlotCount;
+            return this.slotSources?.[ourSlotIndex] || null;
+        }
+    };
+    
     nodeType.prototype.updateSlotTypes = function() {
         this.slotTypes = {};
+        this.slotSources = {};
         
         if (!this.inputs) return;
         
@@ -1323,12 +1362,20 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         for (let i = 1; i < this.inputs.length; i++) {
             const input = this.inputs[i];
             if (input && input.link) {
-                const link = graph.links[input.link];
+                const link = graph.links instanceof Map ? graph.links.get(input.link) : graph.links?.[input.link];
                 if (link) {
                     const sourceNode = graph.getNodeById(link.origin_id);
                     if (sourceNode && sourceNode.outputs && sourceNode.outputs[link.origin_slot]) {
                         const outputType = sourceNode.outputs[link.origin_slot].type;
                         this.slotTypes[i] = outputType; // i corresponds to slot number here
+                        
+                        // If this slot receives a FRIENDLY_PIPE, track its source
+                        if (outputType === "FRIENDLY_PIPE") {
+                            const pipeSource = findOriginalSource(sourceNode, link.origin_slot);
+                            if (pipeSource) {
+                                this.slotSources[i] = pipeSource;
+                            }
+                        }
                     }
                 }
             }
