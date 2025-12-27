@@ -421,10 +421,11 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
         
         const node = this;
         
-        // Initialize slot count, names, and types
+        // Initialize slot count, names, types, and sources
         this.slotCount = 1;
         this.slotNames = { 1: "slot_1" };
         this.slotTypes = {};
+        this.slotSources = {};
         
         // Remove all inputs except the first one
         while (this.inputs && this.inputs.length > 1) {
@@ -549,6 +550,7 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
     
     nodeType.prototype.updateSlotTypes = function() {
         this.slotTypes = {};
+        this.slotSources = {}; // Track source nodes for FRIENDLY_PIPE inputs
         
         if (!this.inputs) return;
         
@@ -563,10 +565,24 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
                     if (sourceNode && sourceNode.outputs && sourceNode.outputs[link.origin_slot]) {
                         const outputType = sourceNode.outputs[link.origin_slot].type;
                         this.slotTypes[i + 1] = outputType;
+                        
+                        // If this slot receives a FRIENDLY_PIPE, track its source
+                        if (outputType === "FRIENDLY_PIPE") {
+                            // Find the original source of this pipe
+                            const pipeSource = findOriginalSource(sourceNode, link.origin_slot);
+                            if (pipeSource) {
+                                this.slotSources[i + 1] = pipeSource;
+                            }
+                        }
                     }
                 }
             }
         }
+    };
+    
+    // Get the source node for a specific slot (used by downstream FriendlyPipeOut)
+    nodeType.prototype.getSlotSource = function(slotIndex) {
+        return this.slotSources?.[slotIndex] || null;
     };
     
     // Handle serialization
@@ -681,6 +697,7 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         this.slotCount = 1;
         this.slotNames = {};
         this.slotTypes = {};
+        this.slotSources = {};
         
         // Remove all outputs except the first one
         while (this.outputs && this.outputs.length > 1) {
@@ -699,13 +716,14 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         this.setSize(this.computeSize());
     };
     
-    nodeType.prototype.updateFromSource = function(slotCount, slotNames, slotTypes) {
+    nodeType.prototype.updateFromSource = function(slotCount, slotNames, slotTypes, slotSources) {
         const node = this;
         
         // Update outputs to match source
         const targetCount = slotCount || 1;
         const names = slotNames || {};
         const types = slotTypes || {};
+        const sources = slotSources || {};
         
         // Add or remove outputs as needed
         while (this.outputs && this.outputs.length < targetCount) {
@@ -729,8 +747,39 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
         this.slotCount = targetCount;
         this.slotNames = names;
         this.slotTypes = types;
+        this.slotSources = sources;
         this.updateSize();
         this.setDirtyCanvas(true, true);
+        
+        // Notify any FriendlyPipeOut nodes connected to our output slots
+        this.notifySlotConnections();
+    };
+    
+    // Notify FriendlyPipeOut nodes connected to individual output slots
+    nodeType.prototype.notifySlotConnections = function() {
+        if (!this.outputs) return;
+        
+        const graph = this.graph || app.graph;
+        
+        for (let i = 0; i < this.outputs.length; i++) {
+            const output = this.outputs[i];
+            if (output.links) {
+                for (const linkId of output.links) {
+                    const link = graph.links instanceof Map ? graph.links.get(linkId) : graph.links?.[linkId];
+                    if (link) {
+                        const targetNode = graph.getNodeById(link.target_id);
+                        if (targetNode && targetNode.syncWithSource) {
+                            targetNode.syncWithSource();
+                        }
+                    }
+                }
+            }
+        }
+    };
+    
+    // Get the source node for a specific slot (used by downstream FriendlyPipeOut)
+    nodeType.prototype.getSlotSource = function(slotIndex) {
+        return this.slotSources?.[slotIndex] || null;
     };
     
     // Handle connection changes
@@ -834,6 +883,56 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
             return;
         }
         
+        // Special case: if connected to a FriendlyPipeOut's output slot, check if that slot
+        // contains a FRIENDLY_PIPE and trace back to its original source
+        if (immediateSource.type === "FriendlyPipeOut" && originSlot > 0) {
+            debugLog("Connected to FriendlyPipeOut output slot", originSlot);
+            // This FriendlyPipeOut is outputting individual slots
+            // Check if the slot type is FRIENDLY_PIPE
+            const slotType = immediateSource.slotTypes?.[originSlot];
+            debugLog("Slot type:", slotType);
+            
+            if (slotType === "FRIENDLY_PIPE") {
+                // Need to find the original source of this pipe
+                // First, find the FriendlyPipeIn that feeds this FriendlyPipeOut
+                const pipeOutInput = immediateSource.inputs?.[0];
+                if (pipeOutInput && pipeOutInput.link) {
+                    const pipeOutLink = graph.links[pipeOutInput.link];
+                    if (pipeOutLink) {
+                        const pipeInNode = graph.getNodeById(pipeOutLink.origin_id);
+                        // Find the original FriendlyPipeIn/Edit
+                        const pipeSource = findOriginalSource(pipeInNode, pipeOutLink.origin_slot);
+                        if (pipeSource && pipeSource.getSlotSource) {
+                            // Get the source for this specific slot
+                            const slotSource = pipeSource.getSlotSource(originSlot);
+                            debugLog("Found slot source:", slotSource);
+                            if (slotSource) {
+                                if (slotSource.updateSlotTypes) {
+                                    slotSource.updateSlotTypes();
+                                }
+                                if (slotSource.getTotalSlotCount) {
+                                    this.updateFromSource(
+                                        slotSource.getTotalSlotCount(),
+                                        slotSource.getCombinedSlotNames(),
+                                        slotSource.getCombinedSlotTypes(),
+                                        slotSource.slotSources || {}
+                                    );
+                                } else {
+                                    this.updateFromSource(
+                                        slotSource.slotCount,
+                                        slotSource.slotNames || {},
+                                        slotSource.slotTypes || {},
+                                        slotSource.slotSources || {}
+                                    );
+                                }
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
         // Traverse through reroute/subgraph nodes to find the original FriendlyPipeIn or FriendlyPipeEdit
         const sourceNode = findOriginalSource(immediateSource, originSlot);
         debugLog("sourceNode from traversal:", sourceNode);
@@ -854,7 +953,8 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
                 this.updateFromSource(
                     effectiveSource.getTotalSlotCount(),
                     effectiveSource.getCombinedSlotNames(),
-                    effectiveSource.getCombinedSlotTypes()
+                    effectiveSource.getCombinedSlotTypes(),
+                    effectiveSource.slotSources || {}
                 );
             } else {
                 // FriendlyPipeIn or other source
@@ -864,7 +964,8 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
                 this.updateFromSource(
                     effectiveSource.slotCount, 
                     effectiveSource.slotNames || {},
-                    effectiveSource.slotTypes || {}
+                    effectiveSource.slotTypes || {},
+                    effectiveSource.slotSources || {}
                 );
             }
         } else {
