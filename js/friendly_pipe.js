@@ -1,5 +1,18 @@
 import { app } from "../../scripts/app.js";
-import { config } from "./config.js";
+
+// Default configuration
+const defaultConfig = {
+    debug: false,
+};
+
+// Try to load config, fall back to defaults if not found
+let config = defaultConfig;
+try {
+    const configModule = await import("./config.js");
+    config = { ...defaultConfig, ...configModule.config };
+} catch (e) {
+    // config.js doesn't exist, use defaults
+}
 
 // Debug logging helper
 function debugLog(...args) {

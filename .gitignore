@@ -1,0 +1,15 @@
+# Config file (use config.js.example as template)
+js/config.js
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

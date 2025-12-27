@@ -1,4 +1,6 @@
 // Configuration for Friendly Pipe extension
+// Copy this file to config.js and modify as needed
+
 export const config = {
     // Set to true to enable debug logging in the browser console
     debug: false,
