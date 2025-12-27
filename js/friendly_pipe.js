@@ -252,6 +252,16 @@ function notifyDownstreamNodes(node, slotIndex, visited = new Set(), depth = 0) 
     
     const graph = node.graph || app.graph;
     
+    console.log("[FriendlyPipe] notifyDownstreamNodes called:", {
+        nodeType: node.type,
+        nodeId: node.id,
+        slotIndex,
+        depth,
+        hasOutputs: !!node.outputs,
+        outputSlot: node.outputs?.[slotIndex],
+        links: node.outputs?.[slotIndex]?.links
+    });
+    
     if (!node.outputs || !node.outputs[slotIndex] || !node.outputs[slotIndex].links) return;
     
     for (const linkId of node.outputs[slotIndex].links) {
@@ -261,6 +271,12 @@ function notifyDownstreamNodes(node, slotIndex, visited = new Set(), depth = 0) 
         const targetNode = graph.getNodeById(link.target_id);
         if (!targetNode) continue;
         
+        console.log("[FriendlyPipe] Found target node:", {
+            targetType: targetNode.type,
+            targetId: targetNode.id,
+            hasSyncWithSource: !!targetNode.syncWithSource
+        });
+        
         // Prevent infinite loops
         const nodeKey = `${targetNode.id}-${graph.id || 'main'}`;
         if (visited.has(nodeKey)) continue;
@@ -268,6 +284,7 @@ function notifyDownstreamNodes(node, slotIndex, visited = new Set(), depth = 0) 
         
         // If target has syncWithSource, call it
         if (targetNode.syncWithSource) {
+            console.log("[FriendlyPipe] Calling syncWithSource on", targetNode.type, targetNode.id);
             targetNode.syncWithSource();
         }
         
