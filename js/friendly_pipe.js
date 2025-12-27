@@ -265,11 +265,37 @@ function notifyDownstreamNodes(node, slotIndex, visited = new Set(), depth = 0) 
     if (!node.outputs || !node.outputs[slotIndex] || !node.outputs[slotIndex].links) return;
     
     for (const linkId of node.outputs[slotIndex].links) {
-        const link = graph.links[linkId];
-        console.log("[FriendlyPipe] Processing linkId:", linkId, "link:", link, "graph:", graph, "graph.links keys sample:", Object.keys(graph.links || {}).slice(0, 10));
+        // Try to find the link in the current graph first, then fall back to app.graph
+        let link = graph.links instanceof Map ? graph.links.get(linkId) : graph.links?.[linkId];
+        if (!link && graph !== app.graph) {
+            // Link might be in the parent/root graph for cross-subgraph connections
+            link = app.graph.links instanceof Map ? app.graph.links.get(linkId) : app.graph.links?.[linkId];
+        }
+        console.log("[FriendlyPipe] Processing linkId:", linkId, "link:", link);
         if (!link) continue;
         
-        const targetNode = graph.getNodeById(link.target_id);
+        // Handle negative target_id (subgraph output boundary)
+        if (link.target_id < 0) {
+            console.log("[FriendlyPipe] Negative target_id detected - subgraph output boundary");
+            // This connection goes to a subgraph output
+            // We need to find the parent subgraph node and notify nodes connected to its output
+            const parentInfo = getParentSubgraphInfo(node);
+            if (parentInfo) {
+                const { parentNode, parentGraph } = parentInfo;
+                // The target_slot on a subgraph output boundary maps to the parent's output slot
+                // But we need to figure out which output slot on the parent corresponds to this
+                const outputSlotOnParent = link.target_slot;
+                console.log("[FriendlyPipe] Found parent subgraph, notifying from output slot:", outputSlotOnParent);
+                notifyDownstreamNodes(parentNode, outputSlotOnParent, visited, depth + 1);
+            }
+            continue;
+        }
+        
+        // Try to find the target node in the current graph first, then app.graph
+        let targetNode = graph.getNodeById(link.target_id);
+        if (!targetNode && graph !== app.graph) {
+            targetNode = app.graph.getNodeById(link.target_id);
+        }
         console.log("[FriendlyPipe] link.target_id:", link.target_id, "targetNode:", targetNode);
         if (!targetNode) continue;
         
