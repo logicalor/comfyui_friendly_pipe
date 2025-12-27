@@ -312,6 +312,12 @@ function notifyDownstreamNodes(node, slotIndex, visited = new Set(), depth = 0) 
         if (isPassThroughNode(targetNode) && targetNode.outputs) {
             notifyDownstreamNodes(targetNode, 0, visited, depth + 1);
         }
+        
+        // If target is a FriendlyPipeEdit, continue propagating through it
+        // (it has already been synced above, now notify its downstream nodes)
+        if (targetNode.type === "FriendlyPipeEdit" && targetNode.outputs) {
+            notifyDownstreamNodes(targetNode, 0, visited, depth + 1);
+        }
     }
 }
 
