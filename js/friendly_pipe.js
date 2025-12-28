@@ -1370,13 +1370,20 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
     // Update the exposed incoming slot inputs based on current incoming pipe slots
     nodeType.prototype.updateExposedIncomingSlots = function() {
         const node = this;
+        
+        console.log("[FriendlyPipeEdit] updateExposedIncomingSlots called");
+        console.log("[FriendlyPipeEdit] incomingSlotCount:", this.incomingSlotCount);
+        console.log("[FriendlyPipeEdit] incomingSlotNames:", JSON.stringify(this.incomingSlotNames));
+        console.log("[FriendlyPipeEdit] slotCount:", this.slotCount);
+        console.log("[FriendlyPipeEdit] slotNames:", JSON.stringify(this.slotNames));
+        
         // Calculate expected input structure:
         // Index 0: pipe input
         // Index 1 to incomingSlotCount: exposed incoming slots (named incoming_slot_1, etc.)
         // Index incomingSlotCount+1 to end: additional new slots (named slot_1, etc.)
 
-        const expectedExposedCount = this.incomingSlotCount;
-        const totalInputs = 1 + expectedExposedCount + this.slotCount;
+        const expectedExposedCount = this.incomingSlotCount || 0;
+        const additionalSlotCount = this.slotCount || 0;
 
         // Build the desired input slot definitions
         const desiredInputs = [];
@@ -1398,21 +1405,33 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         for (let i = 0; i < desiredInputs.length; i++) {
             const def = desiredInputs[i];
             if (this.inputs && this.inputs[i]) {
-                // Update in place
+                // Update in place - preserve the link!
+                const existingLink = this.inputs[i].link;
                 this.inputs[i].name = def.name;
                 this.inputs[i].type = def.type;
                 this.inputs[i].label = def.label;
                 this.inputs[i].isExposedIncoming = !!def.isExposedIncoming;
+                // Restore link if it was cleared
+                if (existingLink !== undefined) {
+                    this.inputs[i].link = existingLink;
+                }
             } else {
                 // Add new input
                 this.addInput(def.name, def.type);
-                this.inputs[i].label = def.label;
-                if (def.isExposedIncoming) this.inputs[i].isExposedIncoming = true;
+                if (this.inputs[i]) {
+                    this.inputs[i].label = def.label;
+                    if (def.isExposedIncoming) this.inputs[i].isExposedIncoming = true;
+                }
             }
         }
         // Remove extra inputs if any
         while (this.inputs && this.inputs.length > desiredInputs.length) {
             this.removeInput(this.inputs.length - 1);
+        }
+
+        console.log("[FriendlyPipeEdit] Final inputs:");
+        for (let i = 0; i < this.inputs.length; i++) {
+            console.log(`  [${i}] name=${this.inputs[i].name}, label=${this.inputs[i].label}, link=${this.inputs[i].link}, type=${this.inputs[i].type}`);
         }
 
         this.exposedIncomingSlots = {};
@@ -1659,6 +1678,19 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         if (origOnExecutionStart) {
             origOnExecutionStart.apply(this, arguments);
         }
+        
+        // Debug: log input state at execution time
+        console.log("[FriendlyPipeEdit] onExecutionStart");
+        console.log("[FriendlyPipeEdit] incomingSlotCount:", this.incomingSlotCount);
+        console.log("[FriendlyPipeEdit] slotCount:", this.slotCount);
+        console.log("[FriendlyPipeEdit] inputs:", this.inputs?.map((inp, idx) => ({
+            idx,
+            name: inp.name,
+            label: inp.label,
+            link: inp.link,
+            type: inp.type
+        })));
+        
         // Update widgets for execution
         if (this.widgets) {
             const slotCountWidget = this.widgets.find(w => w.name === "slot_count");
