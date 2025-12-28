@@ -1247,6 +1247,83 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         
         if (!sourceNode) return;
         
+        // Special case: if connected to a FriendlyPipeOut's output slot, check if that slot
+        // contains a FRIENDLY_PIPE and trace back to its original source
+        if (sourceNode.type === "FriendlyPipeOut") {
+            // originSlot is 0-indexed, but slotTypes/slotSources are 1-indexed
+            const slotNum = originSlot + 1;
+            debugLog("FriendlyPipeEdit connected to FriendlyPipeOut output slot", originSlot, "-> slotNum", slotNum);
+            
+            const slotType = sourceNode.slotTypes?.[slotNum];
+            debugLog("Slot type:", slotType);
+            
+            if (slotType === "FRIENDLY_PIPE") {
+                // Need to find the original source of this nested pipe
+                const pipeOutInput = sourceNode.inputs?.[0];
+                if (pipeOutInput && pipeOutInput.link) {
+                    const sourceGraph = sourceNode.graph || graph;
+                    const pipeOutLink = sourceGraph.links instanceof Map 
+                        ? sourceGraph.links.get(pipeOutInput.link) 
+                        : sourceGraph.links?.[pipeOutInput.link];
+                    
+                    if (pipeOutLink) {
+                        let pipeInNode = null;
+                        
+                        // Handle negative origin_id (subgraph input boundary)
+                        if (pipeOutLink.origin_id < 0) {
+                            const parentInfo = getParentSubgraphInfo(sourceNode);
+                            if (parentInfo) {
+                                const { parentNode, parentGraph } = parentInfo;
+                                const parentInput = parentNode.inputs?.[pipeOutLink.origin_slot];
+                                if (parentInput && parentInput.link) {
+                                    const parentLink = parentGraph.links instanceof Map
+                                        ? parentGraph.links.get(parentInput.link)
+                                        : parentGraph.links?.[parentInput.link];
+                                    if (parentLink) {
+                                        pipeInNode = parentGraph.getNodeById(parentLink.origin_id);
+                                    }
+                                }
+                            }
+                        } else {
+                            pipeInNode = sourceGraph.getNodeById(pipeOutLink.origin_id);
+                        }
+                        
+                        if (pipeInNode) {
+                            const pipeSource = findOriginalSource(pipeInNode, pipeOutLink.origin_slot);
+                            debugLog("pipeSource for nested pipe:", pipeSource);
+                            
+                            if (pipeSource && pipeSource.getSlotSource) {
+                                const slotSource = pipeSource.getSlotSource(slotNum);
+                                debugLog("Found slot source for nested pipe:", slotSource);
+                                
+                                if (slotSource) {
+                                    if (slotSource.updateSlotTypes) {
+                                        slotSource.updateSlotTypes();
+                                    }
+                                    if (slotSource.getTotalSlotCount) {
+                                        this.incomingSlotCount = slotSource.getTotalSlotCount();
+                                        this.incomingSlotNames = slotSource.getCombinedSlotNames();
+                                        this.incomingSlotTypes = slotSource.getCombinedSlotTypes();
+                                        this.incomingSlotSources = slotSource.getCombinedSlotSources ? slotSource.getCombinedSlotSources() : {};
+                                    } else {
+                                        this.incomingSlotCount = slotSource.slotCount;
+                                        this.incomingSlotNames = slotSource.slotNames || {};
+                                        this.incomingSlotTypes = slotSource.slotTypes || {};
+                                        this.incomingSlotSources = slotSource.slotSources || {};
+                                    }
+                                    
+                                    // Update exposed incoming slot inputs
+                                    this.updateExposedIncomingSlots();
+                                    this.notifyConnectedOutputs();
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
         // Traverse through reroute nodes to find the original pipe source
         const originalSource = findOriginalSource(sourceNode, originSlot);
         const effectiveSource = originalSource || sourceNode;
