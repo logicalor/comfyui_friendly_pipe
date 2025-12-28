@@ -1269,25 +1269,29 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         if (sourceNode.type === "FriendlyPipeOut") {
             // originSlot is 0-indexed, but slotTypes/slotSources are 1-indexed
             const slotNum = originSlot + 1;
-            debugLog("FriendlyPipeEdit connected to FriendlyPipeOut output slot", originSlot, "-> slotNum", slotNum);
+            console.log("[FriendlyPipeEdit] Connected to FriendlyPipeOut, originSlot:", originSlot, "slotNum:", slotNum);
             
             const slotType = sourceNode.slotTypes?.[slotNum];
-            debugLog("Slot type:", slotType);
+            console.log("[FriendlyPipeEdit] FriendlyPipeOut slot type:", slotType);
             
             if (slotType === "FRIENDLY_PIPE") {
+                console.log("[FriendlyPipeEdit] Slot contains FRIENDLY_PIPE, tracing back...");
                 // Need to find the original source of this nested pipe
                 const pipeOutInput = sourceNode.inputs?.[0];
+                console.log("[FriendlyPipeEdit] pipeOutInput:", pipeOutInput);
                 if (pipeOutInput && pipeOutInput.link) {
                     const sourceGraph = sourceNode.graph || graph;
                     const pipeOutLink = sourceGraph.links instanceof Map 
                         ? sourceGraph.links.get(pipeOutInput.link) 
                         : sourceGraph.links?.[pipeOutInput.link];
+                    console.log("[FriendlyPipeEdit] pipeOutLink:", pipeOutLink);
                     
                     if (pipeOutLink) {
                         let pipeInNode = null;
                         
                         // Handle negative origin_id (subgraph input boundary)
                         if (pipeOutLink.origin_id < 0) {
+                            console.log("[FriendlyPipeEdit] pipeOutLink has negative origin_id");
                             const parentInfo = getParentSubgraphInfo(sourceNode);
                             if (parentInfo) {
                                 const { parentNode, parentGraph } = parentInfo;
@@ -1304,14 +1308,15 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
                         } else {
                             pipeInNode = sourceGraph.getNodeById(pipeOutLink.origin_id);
                         }
+                        console.log("[FriendlyPipeEdit] pipeInNode:", pipeInNode?.type, pipeInNode?.id);
                         
                         if (pipeInNode) {
                             const pipeSource = findOriginalSource(pipeInNode, pipeOutLink.origin_slot);
-                            debugLog("pipeSource for nested pipe:", pipeSource);
+                            console.log("[FriendlyPipeEdit] pipeSource:", pipeSource?.type, pipeSource?.id);
                             
                             if (pipeSource && pipeSource.getSlotSource) {
                                 const slotSource = pipeSource.getSlotSource(slotNum);
-                                debugLog("Found slot source for nested pipe:", slotSource);
+                                console.log("[FriendlyPipeEdit] slotSource:", slotSource?.type, slotSource?.id, "slotCount:", slotSource?.slotCount);
                                 
                                 if (slotSource) {
                                     if (slotSource.updateSlotTypes) {
