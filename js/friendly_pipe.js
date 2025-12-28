@@ -1343,7 +1343,8 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         
         console.log("[FriendlyPipeEdit] syncWithSource - effectiveSource:", effectiveSource?.type, effectiveSource?.id);
         console.log("[FriendlyPipeEdit] syncWithSource - effectiveSource.slotCount:", effectiveSource?.slotCount);
-        console.log("[FriendlyPipeEdit] syncWithSource - effectiveSource.slotNames:", effectiveSource?.slotNames);
+        console.log("[FriendlyPipeEdit] syncWithSource - effectiveSource.slotNames:", JSON.stringify(effectiveSource?.slotNames));
+        console.log("[FriendlyPipeEdit] syncWithSource - has getTotalSlotCount:", !!effectiveSource?.getTotalSlotCount);
         
         // Get combined slot info from source (could be FriendlyPipeIn or another FriendlyPipeEdit)
         if (effectiveSource.slotCount !== undefined) {
@@ -1353,6 +1354,7 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
                 this.incomingSlotNames = effectiveSource.getCombinedSlotNames();
                 this.incomingSlotTypes = effectiveSource.getCombinedSlotTypes();
                 this.incomingSlotSources = effectiveSource.getCombinedSlotSources ? effectiveSource.getCombinedSlotSources() : {};
+                console.log("[FriendlyPipeEdit] Got from getTotalSlotCount:", this.incomingSlotCount);
             } else {
                 this.incomingSlotCount = effectiveSource.slotCount;
                 this.incomingSlotNames = effectiveSource.slotNames || {};
@@ -1362,7 +1364,10 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
                 }
                 this.incomingSlotTypes = effectiveSource.slotTypes || {};
                 this.incomingSlotSources = effectiveSource.slotSources || {};
+                console.log("[FriendlyPipeEdit] Got from slotCount:", this.incomingSlotCount);
             }
+            console.log("[FriendlyPipeEdit] After sync - incomingSlotCount:", this.incomingSlotCount);
+            console.log("[FriendlyPipeEdit] After sync - incomingSlotNames:", JSON.stringify(this.incomingSlotNames));
         }
         
         // Update exposed incoming slot inputs
