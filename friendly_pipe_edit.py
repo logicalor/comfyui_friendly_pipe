@@ -42,6 +42,12 @@ class FriendlyPipeEdit:
     def execute(self, pipe, slot_count=0, slot_names="{}", incoming_slot_count=0, **kwargs):
         import json
         
+        # Debug: print what we received
+        print(f"[FriendlyPipeEdit] execute called")
+        print(f"[FriendlyPipeEdit] slot_count={slot_count}, incoming_slot_count={incoming_slot_count}")
+        print(f"[FriendlyPipeEdit] kwargs keys: {list(kwargs.keys())}")
+        print(f"[FriendlyPipeEdit] kwargs: {kwargs}")
+        
         # Parse slot names from JSON string
         try:
             names_dict = json.loads(slot_names)
@@ -83,8 +89,10 @@ class FriendlyPipeEdit:
         # Override incoming slots if exposed inputs are connected
         for i in range(1, actual_incoming_count + 1):
             incoming_key = f"incoming_slot_{i}"
+            print(f"[FriendlyPipeEdit] Checking {incoming_key}: present={incoming_key in kwargs}, value={kwargs.get(incoming_key, 'NOT_PRESENT')}")
             if incoming_key in kwargs and kwargs[incoming_key] is not None:
                 pipe_data["slots"][i] = kwargs[incoming_key]
+                print(f"[FriendlyPipeEdit] Overriding slot {i} with {kwargs[incoming_key]}")
         
         # Find the highest slot we're adding
         max_new_slot = 0
@@ -106,5 +114,7 @@ class FriendlyPipeEdit:
         
         # Calculate final slot count
         pipe_data["slot_count"] = actual_incoming_count + max(slot_count, max_new_slot)
+        
+        print(f"[FriendlyPipeEdit] Final pipe_data: {pipe_data}")
         
         return (pipe_data,)
