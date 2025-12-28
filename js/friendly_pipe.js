@@ -1,11 +1,7 @@
 import { app } from "../../scripts/app.js";
+import { config } from "./config.js";
 
 console.log("[FriendlyPipe] Script file loaded");
-
-// Configuration - edit this directly to enable debug
-const config = {
-    debug: false,
-};
 
 // Debug logging helper
 function debugLog(...args) {
@@ -1273,43 +1269,43 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
             sourceNode = graph.getNodeById(link.origin_id);
         }
         
-        console.log("[FriendlyPipeEdit] syncWithSource - sourceNode:", sourceNode?.type, sourceNode?.id);
-        console.log("[FriendlyPipeEdit] syncWithSource - sourceNode.slotCount:", sourceNode?.slotCount);
-        console.log("[FriendlyPipeEdit] syncWithSource - sourceNode.slotNames:", JSON.stringify(sourceNode?.slotNames));
+        debugLog("syncWithSource - sourceNode:", sourceNode?.type, sourceNode?.id);
+        debugLog("syncWithSource - sourceNode.slotCount:", sourceNode?.slotCount);
+        debugLog("syncWithSource - sourceNode.slotNames:", JSON.stringify(sourceNode?.slotNames));
         
         if (!sourceNode) return;
         
-        console.log("[FriendlyPipeEdit] sourceNode.type exact value:", JSON.stringify(sourceNode.type));
-        console.log("[FriendlyPipeEdit] Is FriendlyPipeOut?", sourceNode.type === "FriendlyPipeOut");
+        debugLog("sourceNode.type exact value:", JSON.stringify(sourceNode.type));
+        debugLog("Is FriendlyPipeOut?", sourceNode.type === "FriendlyPipeOut");
         
         // Special case: if connected to a FriendlyPipeOut's output slot, check if that slot
         // contains a FRIENDLY_PIPE and trace back to its original source
         if (sourceNode.type === "FriendlyPipeOut") {
             // originSlot is 0-indexed, but slotTypes/slotSources are 1-indexed
             const slotNum = originSlot + 1;
-            console.log("[FriendlyPipeEdit] Connected to FriendlyPipeOut, originSlot:", originSlot, "slotNum:", slotNum);
+            debugLog("Connected to FriendlyPipeOut, originSlot:", originSlot, "slotNum:", slotNum);
             
             const slotType = sourceNode.slotTypes?.[slotNum];
-            console.log("[FriendlyPipeEdit] FriendlyPipeOut slot type:", slotType);
+            debugLog("FriendlyPipeOut slot type:", slotType);
             
             if (slotType === "FRIENDLY_PIPE") {
-                console.log("[FriendlyPipeEdit] Slot contains FRIENDLY_PIPE, tracing back...");
+                debugLog("Slot contains FRIENDLY_PIPE, tracing back...");
                 // Need to find the original source of this nested pipe
                 const pipeOutInput = sourceNode.inputs?.[0];
-                console.log("[FriendlyPipeEdit] pipeOutInput:", pipeOutInput);
+                debugLog("pipeOutInput:", pipeOutInput);
                 if (pipeOutInput && pipeOutInput.link) {
                     const sourceGraph = sourceNode.graph || graph;
                     const pipeOutLink = sourceGraph.links instanceof Map 
                         ? sourceGraph.links.get(pipeOutInput.link) 
                         : sourceGraph.links?.[pipeOutInput.link];
-                    console.log("[FriendlyPipeEdit] pipeOutLink:", pipeOutLink);
+                    debugLog("pipeOutLink:", pipeOutLink);
                     
                     if (pipeOutLink) {
                         let pipeInNode = null;
                         
                         // Handle negative origin_id (subgraph input boundary)
                         if (pipeOutLink.origin_id < 0) {
-                            console.log("[FriendlyPipeEdit] pipeOutLink has negative origin_id");
+                            debugLog("pipeOutLink has negative origin_id");
                             const parentInfo = getParentSubgraphInfo(sourceNode);
                             if (parentInfo) {
                                 const { parentNode, parentGraph } = parentInfo;
@@ -1326,15 +1322,15 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
                         } else {
                             pipeInNode = sourceGraph.getNodeById(pipeOutLink.origin_id);
                         }
-                        console.log("[FriendlyPipeEdit] pipeInNode:", pipeInNode?.type, pipeInNode?.id);
+                        debugLog("pipeInNode:", pipeInNode?.type, pipeInNode?.id);
                         
                         if (pipeInNode) {
                             const pipeSource = findOriginalSource(pipeInNode, pipeOutLink.origin_slot);
-                            console.log("[FriendlyPipeEdit] pipeSource:", pipeSource?.type, pipeSource?.id);
+                            debugLog("pipeSource:", pipeSource?.type, pipeSource?.id);
                             
                             if (pipeSource && pipeSource.getSlotSource) {
                                 const slotSource = pipeSource.getSlotSource(slotNum);
-                                console.log("[FriendlyPipeEdit] slotSource:", slotSource?.type, slotSource?.id, "slotCount:", slotSource?.slotCount);
+                                debugLog("slotSource:", slotSource?.type, slotSource?.id, "slotCount:", slotSource?.slotCount);
                                 
                                 if (slotSource) {
                                     if (slotSource.updateSlotTypes) {
@@ -1368,10 +1364,10 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         const originalSource = findOriginalSource(sourceNode, originSlot);
         const effectiveSource = originalSource || sourceNode;
         
-        console.log("[FriendlyPipeEdit] syncWithSource - effectiveSource:", effectiveSource?.type, effectiveSource?.id);
-        console.log("[FriendlyPipeEdit] syncWithSource - effectiveSource.slotCount:", effectiveSource?.slotCount);
-        console.log("[FriendlyPipeEdit] syncWithSource - effectiveSource.slotNames:", JSON.stringify(effectiveSource?.slotNames));
-        console.log("[FriendlyPipeEdit] syncWithSource - has getTotalSlotCount:", !!effectiveSource?.getTotalSlotCount);
+        debugLog("syncWithSource - effectiveSource:", effectiveSource?.type, effectiveSource?.id);
+        debugLog("syncWithSource - effectiveSource.slotCount:", effectiveSource?.slotCount);
+        debugLog("syncWithSource - effectiveSource.slotNames:", JSON.stringify(effectiveSource?.slotNames));
+        debugLog("syncWithSource - has getTotalSlotCount:", !!effectiveSource?.getTotalSlotCount);
         
         // Get combined slot info from source (could be FriendlyPipeIn or another FriendlyPipeEdit)
         if (effectiveSource.slotCount !== undefined) {
@@ -1381,7 +1377,7 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
                 this.incomingSlotNames = effectiveSource.getCombinedSlotNames();
                 this.incomingSlotTypes = effectiveSource.getCombinedSlotTypes();
                 this.incomingSlotSources = effectiveSource.getCombinedSlotSources ? effectiveSource.getCombinedSlotSources() : {};
-                console.log("[FriendlyPipeEdit] Got from getTotalSlotCount:", this.incomingSlotCount);
+                debugLog("Got from getTotalSlotCount:", this.incomingSlotCount);
             } else {
                 this.incomingSlotCount = effectiveSource.slotCount;
                 this.incomingSlotNames = effectiveSource.slotNames || {};
@@ -1391,10 +1387,10 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
                 }
                 this.incomingSlotTypes = effectiveSource.slotTypes || {};
                 this.incomingSlotSources = effectiveSource.slotSources || {};
-                console.log("[FriendlyPipeEdit] Got from slotCount:", this.incomingSlotCount);
+                debugLog("Got from slotCount:", this.incomingSlotCount);
             }
-            console.log("[FriendlyPipeEdit] After sync - incomingSlotCount:", this.incomingSlotCount);
-            console.log("[FriendlyPipeEdit] After sync - incomingSlotNames:", JSON.stringify(this.incomingSlotNames));
+            debugLog("After sync - incomingSlotCount:", this.incomingSlotCount);
+            debugLog("After sync - incomingSlotNames:", JSON.stringify(this.incomingSlotNames));
         }
         
         // Update exposed incoming slot inputs
@@ -1407,11 +1403,11 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
     nodeType.prototype.updateExposedIncomingSlots = function() {
         const node = this;
         
-        console.log("[FriendlyPipeEdit] updateExposedIncomingSlots called");
-        console.log("[FriendlyPipeEdit] incomingSlotCount:", this.incomingSlotCount);
-        console.log("[FriendlyPipeEdit] incomingSlotNames:", JSON.stringify(this.incomingSlotNames));
-        console.log("[FriendlyPipeEdit] slotCount:", this.slotCount);
-        console.log("[FriendlyPipeEdit] slotNames:", JSON.stringify(this.slotNames));
+        debugLog("updateExposedIncomingSlots called");
+        debugLog("incomingSlotCount:", this.incomingSlotCount);
+        debugLog("incomingSlotNames:", JSON.stringify(this.incomingSlotNames));
+        debugLog("slotCount:", this.slotCount);
+        debugLog("slotNames:", JSON.stringify(this.slotNames));
         
         // Calculate expected input structure:
         // Index 0: pipe input
@@ -1465,9 +1461,11 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
             this.removeInput(this.inputs.length - 1);
         }
 
-        console.log("[FriendlyPipeEdit] Final inputs:");
-        for (let i = 0; i < this.inputs.length; i++) {
-            console.log(`  [${i}] name=${this.inputs[i].name}, label=${this.inputs[i].label}, link=${this.inputs[i].link}, type=${this.inputs[i].type}`);
+        if (config.debug) {
+            console.log("[FriendlyPipe] Final inputs:");
+            for (let i = 0; i < this.inputs.length; i++) {
+                console.log(`  [${i}] name=${this.inputs[i].name}, label=${this.inputs[i].label}, link=${this.inputs[i].link}, type=${this.inputs[i].type}`);
+            }
         }
 
         this.exposedIncomingSlots = {};
@@ -1720,10 +1718,10 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         }
         
         // Debug: log input state at execution time
-        console.log("[FriendlyPipeEdit] onExecutionStart");
-        console.log("[FriendlyPipeEdit] incomingSlotCount:", this.incomingSlotCount);
-        console.log("[FriendlyPipeEdit] slotCount:", this.slotCount);
-        console.log("[FriendlyPipeEdit] inputs:", this.inputs?.map((inp, idx) => ({
+        debugLog("onExecutionStart");
+        debugLog("incomingSlotCount:", this.incomingSlotCount);
+        debugLog("slotCount:", this.slotCount);
+        debugLog("inputs:", this.inputs?.map((inp, idx) => ({
             idx,
             name: inp.name,
             label: inp.label,

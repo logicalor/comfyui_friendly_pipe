@@ -41,6 +41,21 @@ class FriendlyPipeEdit:
     
     def execute(self, pipe, slot_count=0, slot_names="{}", incoming_slot_count=0, **kwargs):
         import json
+        import os
+        import re
+        
+        # Read debug setting from js/config.js
+        debug = False
+        config_path = os.path.join(os.path.dirname(__file__), "js", "config.js")
+        try:
+            with open(config_path, "r") as f:
+                content = f.read()
+                # Parse debug: true or debug: false from the JS config
+                match = re.search(r'debug:\s*(true|false)', content)
+                if match:
+                    debug = match.group(1) == "true"
+        except:
+            pass
         
         # Convert slot_count and incoming_slot_count to int if they're strings
         if isinstance(slot_count, str):
@@ -48,12 +63,13 @@ class FriendlyPipeEdit:
         if isinstance(incoming_slot_count, str):
             incoming_slot_count = int(incoming_slot_count) if incoming_slot_count else 0
         
-        # Debug: print what we received
-        print(f"[FriendlyPipeEdit] execute called")
-        print(f"[FriendlyPipeEdit] slot_count={slot_count}, incoming_slot_count={incoming_slot_count}")
-        print(f"[FriendlyPipeEdit] pipe data: {pipe}")
-        print(f"[FriendlyPipeEdit] kwargs keys: {list(kwargs.keys())}")
-        print(f"[FriendlyPipeEdit] kwargs: {kwargs}")
+        # Debug logging
+        if debug:
+            print(f"[FriendlyPipeEdit] execute called")
+            print(f"[FriendlyPipeEdit] slot_count={slot_count}, incoming_slot_count={incoming_slot_count}")
+            print(f"[FriendlyPipeEdit] pipe data: {pipe}")
+            print(f"[FriendlyPipeEdit] kwargs keys: {list(kwargs.keys())}")
+            print(f"[FriendlyPipeEdit] kwargs: {kwargs}")
         
         # Parse slot names from JSON string
         try:
@@ -96,10 +112,12 @@ class FriendlyPipeEdit:
         # Override incoming slots if exposed inputs are connected
         for i in range(1, actual_incoming_count + 1):
             incoming_key = f"incoming_slot_{i}"
-            print(f"[FriendlyPipeEdit] Checking {incoming_key}: present={incoming_key in kwargs}, value={kwargs.get(incoming_key, 'NOT_PRESENT')}")
+            if debug:
+                print(f"[FriendlyPipeEdit] Checking {incoming_key}: present={incoming_key in kwargs}, value={kwargs.get(incoming_key, 'NOT_PRESENT')}")
             if incoming_key in kwargs and kwargs[incoming_key] is not None:
                 pipe_data["slots"][i] = kwargs[incoming_key]
-                print(f"[FriendlyPipeEdit] Overriding slot {i} with {kwargs[incoming_key]}")
+                if debug:
+                    print(f"[FriendlyPipeEdit] Overriding slot {i} with {kwargs[incoming_key]}")
         
         # Find the highest slot we're adding
         max_new_slot = 0
@@ -122,6 +140,7 @@ class FriendlyPipeEdit:
         # Calculate final slot count
         pipe_data["slot_count"] = actual_incoming_count + max(slot_count, max_new_slot)
         
-        print(f"[FriendlyPipeEdit] Final pipe_data: {pipe_data}")
+        if debug:
+            print(f"[FriendlyPipeEdit] Final pipe_data: {pipe_data}")
         
         return (pipe_data,)
