@@ -1370,58 +1370,56 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
     // Update the exposed incoming slot inputs based on current incoming pipe slots
     nodeType.prototype.updateExposedIncomingSlots = function() {
         const node = this;
-        
         // Calculate expected input structure:
         // Index 0: pipe input
         // Index 1 to incomingSlotCount: exposed incoming slots (named incoming_slot_1, etc.)
         // Index incomingSlotCount+1 to end: additional new slots (named slot_1, etc.)
-        
+
         const expectedExposedCount = this.incomingSlotCount;
-        const currentExposedCount = Object.keys(this.exposedIncomingSlots || {}).length;
-        
-        // First, preserve connections on additional slots by tracking them
-        const additionalSlotConnections = {};
-        const additionalStartIndex = 1 + currentExposedCount;
-        for (let i = 0; i < this.slotCount; i++) {
-            const inputIndex = additionalStartIndex + i;
-            if (this.inputs && this.inputs[inputIndex] && this.inputs[inputIndex].link) {
-                additionalSlotConnections[i + 1] = this.inputs[inputIndex].link;
-            }
-        }
-        
-        // Remove all inputs except pipe input (index 0)
-        while (this.inputs && this.inputs.length > 1) {
-            this.removeInput(this.inputs.length - 1);
-        }
-        
-        // Add exposed incoming slot inputs
-        // These have names like "incoming_slot_1" for Python, but display labels from incoming pipe
-        this.exposedIncomingSlots = {};
+        const totalInputs = 1 + expectedExposedCount + this.slotCount;
+
+        // Build the desired input slot definitions
+        const desiredInputs = [];
+        // Pipe input (always first)
+        desiredInputs.push({ name: "pipe", type: "FRIENDLY_PIPE", label: "pipe" });
+        // Exposed incoming slots
         for (let i = 1; i <= expectedExposedCount; i++) {
             const displayName = this.incomingSlotNames[i] || ("slot_" + i);
             const type = this.incomingSlotTypes[i] || "*";
-            // Name must match Python parameter: incoming_slot_N
-            this.addInput("incoming_slot_" + i, type);
-            this.exposedIncomingSlots[i] = true;
-            // Set display label to the incoming slot's name
-            if (this.inputs[i]) {
-                this.inputs[i].label = displayName;
-                this.inputs[i].isExposedIncoming = true;
-            }
+            desiredInputs.push({ name: "incoming_slot_" + i, type, label: displayName, isExposedIncoming: true });
         }
-        
-        // Re-add additional new slot inputs
-        // These have names like "slot_1" for Python
+        // Additional slots
         for (let i = 1; i <= this.slotCount; i++) {
             const displayName = this.slotNames[i] || ("slot_" + i);
-            // Name must match Python parameter: slot_N
-            this.addInput("slot_" + i, "*");
-            const inputIndex = expectedExposedCount + i;
-            if (this.inputs[inputIndex]) {
-                this.inputs[inputIndex].label = displayName;
+            desiredInputs.push({ name: "slot_" + i, type: "*", label: displayName });
+        }
+
+        // Update or add inputs in place
+        for (let i = 0; i < desiredInputs.length; i++) {
+            const def = desiredInputs[i];
+            if (this.inputs && this.inputs[i]) {
+                // Update in place
+                this.inputs[i].name = def.name;
+                this.inputs[i].type = def.type;
+                this.inputs[i].label = def.label;
+                this.inputs[i].isExposedIncoming = !!def.isExposedIncoming;
+            } else {
+                // Add new input
+                this.addInput(def.name, def.type);
+                this.inputs[i].label = def.label;
+                if (def.isExposedIncoming) this.inputs[i].isExposedIncoming = true;
             }
         }
-        
+        // Remove extra inputs if any
+        while (this.inputs && this.inputs.length > desiredInputs.length) {
+            this.removeInput(this.inputs.length - 1);
+        }
+
+        this.exposedIncomingSlots = {};
+        for (let i = 1; i <= expectedExposedCount; i++) {
+            this.exposedIncomingSlots[i] = true;
+        }
+
         this.updateSize();
         this.setDirtyCanvas(true, true);
     };
