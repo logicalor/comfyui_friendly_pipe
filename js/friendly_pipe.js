@@ -1,25 +1,11 @@
 import { app } from "../../scripts/app.js";
 
-console.log("[FriendlyPipe] Script file starting to load...");
+console.log("[FriendlyPipe] Script file loaded");
 
-// Default configuration
-const defaultConfig = {
+// Configuration - edit this directly to enable debug
+const config = {
     debug: false,
 };
-
-// Try to load config, fall back to defaults if not found
-let config = defaultConfig;
-try {
-    console.log("[FriendlyPipe] Attempting to load config...");
-    const configModule = await import("./config.js");
-    config = { ...defaultConfig, ...configModule.config };
-    console.log("[FriendlyPipe] Config loaded:", config);
-} catch (e) {
-    // config.js doesn't exist, use defaults
-    console.log("[FriendlyPipe] Config not found, using defaults");
-}
-
-console.log("[FriendlyPipe] Config section complete");
 
 // Debug logging helper
 function debugLog(...args) {
