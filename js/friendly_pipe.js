@@ -1341,6 +1341,10 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         const originalSource = findOriginalSource(sourceNode, originSlot);
         const effectiveSource = originalSource || sourceNode;
         
+        console.log("[FriendlyPipeEdit] syncWithSource - effectiveSource:", effectiveSource?.type, effectiveSource?.id);
+        console.log("[FriendlyPipeEdit] syncWithSource - effectiveSource.slotCount:", effectiveSource?.slotCount);
+        console.log("[FriendlyPipeEdit] syncWithSource - effectiveSource.slotNames:", effectiveSource?.slotNames);
+        
         // Get combined slot info from source (could be FriendlyPipeIn or another FriendlyPipeEdit)
         if (effectiveSource.slotCount !== undefined) {
             // For FriendlyPipeEdit, we need to get the combined count
