@@ -24,7 +24,7 @@ class FriendlyPipeEdit:
         }
         
         # Define slots for exposed incoming slots (incoming_slot_1, incoming_slot_2, etc.)
-        # These are created dynamically by the frontend based on incoming pipe
+        # These are managed dynamically by the frontend based on incoming pipe
         for i in range(1, cls.MAX_SLOTS + 1):
             inputs["optional"][f"incoming_slot_{i}"] = (ANY_TYPE, {"forceInput": True})
         

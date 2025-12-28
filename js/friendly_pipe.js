@@ -1090,9 +1090,19 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         this.exposedIncomingSlots = {};
         
         // Remove all optional inputs - keep only the pipe input (index 0)
+        // This removes the auto-generated inputs from Python's optional definitions
         while (this.inputs && this.inputs.length > 1) {
             this.removeInput(this.inputs.length - 1);
         }
+        
+        // Also do this after a short delay in case inputs are added after onNodeCreated
+        setTimeout(() => {
+            while (this.inputs && this.inputs.length > 1) {
+                this.removeInput(this.inputs.length - 1);
+            }
+            this.updateSize();
+            this.setDirtyCanvas(true, true);
+        }, 10);
         
         // Add control buttons
         const addWidget = this.addWidget("button", "➕ Add Slot", null, () => {
