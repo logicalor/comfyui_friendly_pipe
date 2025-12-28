@@ -1038,9 +1038,28 @@ function setupFriendlyPipeOut(nodeType, nodeData, app) {
             origOnConfigure.apply(this, arguments);
         }
         
+        // Mark that we're loading from saved state
+        this._loadedFromSave = true;
+        this._savedSlotCount = o.slotCount;
+        this._savedSlotNames = o.slotNames;
+        this._savedSlotTypes = o.slotTypes;
+        
         if (o.slotCount !== undefined) {
             this.updateFromSource(o.slotCount, o.slotNames || {}, o.slotTypes || {});
         }
+        
+        // Sync with source after a delay to ensure upstream nodes are configured
+        // Use multiple attempts with increasing delays for robustness
+        const node = this;
+        const attemptSync = (attempt) => {
+            if (attempt > 3) return;
+            setTimeout(() => {
+                node.syncWithSource();
+            }, attempt * 200);
+        };
+        attemptSync(1);
+        attemptSync(2);
+        attemptSync(3);
     };
 }
 
@@ -1622,10 +1641,17 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         
         this.updateSize();
         
-        // Sync with source after configure - this will rebuild inputs properly
-        setTimeout(() => {
-            this.syncWithSource();
-        }, 100);
+        // Sync with source after configure - use multiple attempts for robustness
+        const node = this;
+        const attemptSync = (attempt) => {
+            if (attempt > 3) return;
+            setTimeout(() => {
+                node.syncWithSource();
+            }, attempt * 200);
+        };
+        attemptSync(1);
+        attemptSync(2);
+        attemptSync(3);
     };
     
     // Override onExecutionStart to pass slot info to Python backend
