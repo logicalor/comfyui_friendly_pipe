@@ -1096,6 +1096,21 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
             this.removeInput(this.inputs.length - 1);
         }
         
+        // Add hidden widgets for passing data to Python
+        // These correspond to the hidden inputs in INPUT_TYPES
+        const slotCountWidget = this.addWidget("number", "slot_count", 0, () => {}, {});
+        slotCountWidget.serialize = true;
+        // Hide the widget from the UI
+        slotCountWidget.computeSize = () => [0, -4];
+        
+        const slotNamesWidget = this.addWidget("text", "slot_names", "{}", () => {}, {});
+        slotNamesWidget.serialize = true;
+        slotNamesWidget.computeSize = () => [0, -4];
+        
+        const incomingSlotCountWidget = this.addWidget("number", "incoming_slot_count", 0, () => {}, {});
+        incomingSlotCountWidget.serialize = true;
+        incomingSlotCountWidget.computeSize = () => [0, -4];
+        
         // Add control buttons
         const addWidget = this.addWidget("button", "➕ Add Slot", null, () => {
             if (node.slotCount < 80) {
