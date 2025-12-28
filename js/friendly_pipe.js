@@ -1264,6 +1264,9 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         
         if (!sourceNode) return;
         
+        console.log("[FriendlyPipeEdit] sourceNode.type exact value:", JSON.stringify(sourceNode.type));
+        console.log("[FriendlyPipeEdit] Is FriendlyPipeOut?", sourceNode.type === "FriendlyPipeOut");
+        
         // Special case: if connected to a FriendlyPipeOut's output slot, check if that slot
         // contains a FRIENDLY_PIPE and trace back to its original source
         if (sourceNode.type === "FriendlyPipeOut") {
