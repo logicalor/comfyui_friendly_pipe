@@ -406,19 +406,24 @@ function notifyDownstreamNodes(node, slotIndex, visited = new Set(), depth = 0) 
     }
 }
 
+console.log("[FriendlyPipe] Extension loading...");
+
 app.registerExtension({
     name: "Comfy.FriendlyPipe",
     
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (nodeData.name === "FriendlyPipeIn") {
+            console.log("[FriendlyPipe] Setting up FriendlyPipeIn");
             setupFriendlyPipeIn(nodeType, nodeData, app);
         }
         
         if (nodeData.name === "FriendlyPipeOut") {
+            console.log("[FriendlyPipe] Setting up FriendlyPipeOut");
             setupFriendlyPipeOut(nodeType, nodeData, app);
         }
         
         if (nodeData.name === "FriendlyPipeEdit") {
+            console.log("[FriendlyPipe] Setting up FriendlyPipeEdit");
             setupFriendlyPipeEdit(nodeType, nodeData, app);
         }
     }
@@ -428,6 +433,7 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
     const origOnNodeCreated = nodeType.prototype.onNodeCreated;
     
     nodeType.prototype.onNodeCreated = function() {
+        console.log("[FriendlyPipe] FriendlyPipeIn onNodeCreated called");
         if (origOnNodeCreated) {
             origOnNodeCreated.apply(this, arguments);
         }
@@ -440,10 +446,12 @@ function setupFriendlyPipeIn(nodeType, nodeData, app) {
         this.slotTypes = {};
         this.slotSources = {};
         
+        console.log("[FriendlyPipe] Before removing inputs, count:", this.inputs?.length);
         // Remove all inputs except the first one
         while (this.inputs && this.inputs.length > 1) {
             this.removeInput(this.inputs.length - 1);
         }
+        console.log("[FriendlyPipe] After removing inputs, count:", this.inputs?.length);
         
         // Rename first input
         if (this.inputs && this.inputs.length > 0) {
