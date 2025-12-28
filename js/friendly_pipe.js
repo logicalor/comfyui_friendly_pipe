@@ -1066,6 +1066,9 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         this.incomingSlotTypes = {};
         this.incomingSlotSources = {};
         
+        // Track which incoming slots are exposed as inputs
+        this.exposedIncomingSlots = {};
+        
         // Remove all optional inputs except the first one
         // Keep the pipe input (index 0) and first slot input (index 1)
         while (this.inputs && this.inputs.length > 2) {
@@ -1087,7 +1090,7 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
                 const defaultName = "slot_" + node.slotCount;
                 node.slotNames[node.slotCount] = defaultName;
                 
-                // Add new input slot
+                // Add new input slot at the end
                 node.addInput("slot_" + node.slotCount, "*");
                 if (node.inputs && node.inputs.length > 0) {
                     node.inputs[node.inputs.length - 1].label = defaultName;
@@ -1107,7 +1110,7 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
                 // Remove the name widget
                 node.removeSlotNameWidget(node.slotCount);
                 
-                // Remove the input slot
+                // Remove the input slot (it's at the end, after exposed incoming slots)
                 node.removeInput(node.inputs.length - 1);
                 
                 delete node.slotNames[node.slotCount];
@@ -1132,8 +1135,8 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         
         const nameWidget = this.addWidget("text", "Label " + slotNum, defaultName, (value) => {
             node.slotNames[slotNum] = value;
-            // Update the input label (offset by 1 for pipe input)
-            const inputIndex = slotNum; // slotNum maps directly since pipe is at 0
+            // Update the input label - account for pipe input and exposed incoming slots
+            const inputIndex = 1 + node.incomingSlotCount + (slotNum - 1);
             if (node.inputs && node.inputs[inputIndex]) {
                 node.inputs[inputIndex].label = value;
             }
@@ -1202,6 +1205,8 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
             this.incomingSlotNames = {};
             this.incomingSlotTypes = {};
             this.incomingSlotSources = {};
+            // Remove exposed incoming slot inputs
+            this.updateExposedIncomingSlots();
             this.notifyConnectedOutputs();
             return;
         }
@@ -1266,7 +1271,74 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
             }
         }
         
+        // Update exposed incoming slot inputs
+        this.updateExposedIncomingSlots();
+        
         this.notifyConnectedOutputs();
+    };
+    
+    // Update the exposed incoming slot inputs based on current incoming pipe slots
+    nodeType.prototype.updateExposedIncomingSlots = function() {
+        const node = this;
+        
+        // Calculate expected input structure:
+        // Index 0: pipe input
+        // Index 1 to incomingSlotCount: exposed incoming slots (named incoming_slot_1, etc.)
+        // Index incomingSlotCount+1 to end: additional new slots (named slot_1, etc.)
+        
+        const expectedExposedCount = this.incomingSlotCount;
+        const currentExposedCount = Object.keys(this.exposedIncomingSlots || {}).length;
+        
+        // First, preserve connections on additional slots by tracking them
+        const additionalSlotConnections = {};
+        const additionalStartIndex = 1 + currentExposedCount;
+        for (let i = 0; i < this.slotCount; i++) {
+            const inputIndex = additionalStartIndex + i;
+            if (this.inputs && this.inputs[inputIndex] && this.inputs[inputIndex].link) {
+                additionalSlotConnections[i + 1] = this.inputs[inputIndex].link;
+            }
+        }
+        
+        // Remove all inputs except pipe input (index 0)
+        while (this.inputs && this.inputs.length > 1) {
+            this.removeInput(this.inputs.length - 1);
+        }
+        
+        // Add exposed incoming slot inputs
+        // These have names like "incoming_slot_1" for Python, but display labels from incoming pipe
+        this.exposedIncomingSlots = {};
+        for (let i = 1; i <= expectedExposedCount; i++) {
+            const displayName = this.incomingSlotNames[i] || ("slot_" + i);
+            const type = this.incomingSlotTypes[i] || "*";
+            // Name must match Python parameter: incoming_slot_N
+            this.addInput("incoming_slot_" + i, type);
+            this.exposedIncomingSlots[i] = true;
+            // Set display label to the incoming slot's name
+            if (this.inputs[i]) {
+                this.inputs[i].label = displayName;
+                this.inputs[i].isExposedIncoming = true;
+            }
+        }
+        
+        // Re-add additional new slot inputs
+        // These have names like "slot_1" for Python
+        for (let i = 1; i <= this.slotCount; i++) {
+            const displayName = this.slotNames[i] || ("slot_" + i);
+            // Name must match Python parameter: slot_N
+            this.addInput("slot_" + i, "*");
+            const inputIndex = expectedExposedCount + i;
+            if (this.inputs[inputIndex]) {
+                this.inputs[inputIndex].label = displayName;
+            }
+        }
+        
+        this.updateSize();
+        this.setDirtyCanvas(true, true);
+    };
+    
+    // Get the input index for an additional slot (accounting for exposed incoming slots)
+    nodeType.prototype.getAdditionalSlotInputIndex = function(slotNum) {
+        return 1 + this.incomingSlotCount + (slotNum - 1);
     };
     
     // Get total slot count (incoming + our additional slots)
@@ -1287,31 +1359,6 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         for (let i = 1; i <= this.slotCount; i++) {
             const newIndex = this.incomingSlotCount + i;
             combined[newIndex] = this.slotNames[i] || ("slot_" + i);
-        }
-        
-        return combined;
-    };
-    
-    // Get combined slot types
-    nodeType.prototype.getCombinedSlotTypes = function() {
-        // Make sure our slot types are up to date
-        this.updateSlotTypes();
-        
-        const combined = {};
-        
-        // Copy incoming slot types from upstream pipe
-        if (this.incomingSlotTypes) {
-            for (const [key, value] of Object.entries(this.incomingSlotTypes)) {
-                combined[key] = value;
-            }
-        }
-        
-        // Add our additional slot types with offset indices
-        for (let i = 1; i <= this.slotCount; i++) {
-            const newIndex = this.incomingSlotCount + i;
-            if (this.slotTypes[i]) {
-                combined[newIndex] = this.slotTypes[i];
-            }
         }
         
         return combined;
@@ -1354,12 +1401,15 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         this.slotTypes = {};
         this.slotSources = {};
         
+        // Also track updates to incoming slot types from exposed inputs
+        this.incomingSlotUpdates = {};
+        
         if (!this.inputs) return;
         
         const graph = this.graph || app.graph;
         
-        // Start from index 1 to skip the pipe input
-        for (let i = 1; i < this.inputs.length; i++) {
+        // Process exposed incoming slot inputs (indices 1 to incomingSlotCount)
+        for (let i = 1; i <= this.incomingSlotCount; i++) {
             const input = this.inputs[i];
             if (input && input.link) {
                 const link = graph.links instanceof Map ? graph.links.get(input.link) : graph.links?.[input.link];
@@ -1367,7 +1417,37 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
                     const sourceNode = graph.getNodeById(link.origin_id);
                     if (sourceNode && sourceNode.outputs && sourceNode.outputs[link.origin_slot]) {
                         const outputType = sourceNode.outputs[link.origin_slot].type;
-                        this.slotTypes[i] = outputType; // i corresponds to slot number here
+                        // Track that this incoming slot has an override connection
+                        this.incomingSlotUpdates[i] = {
+                            type: outputType,
+                            sourceNode: sourceNode,
+                            sourceSlot: link.origin_slot
+                        };
+                        
+                        // If this slot receives a FRIENDLY_PIPE, track its source
+                        if (outputType === "FRIENDLY_PIPE") {
+                            const pipeSource = findOriginalSource(sourceNode, link.origin_slot);
+                            if (pipeSource) {
+                                this.incomingSlotSources[i] = pipeSource;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Process additional slot inputs (indices incomingSlotCount+1 to end)
+        const additionalStartIndex = 1 + this.incomingSlotCount;
+        for (let i = 1; i <= this.slotCount; i++) {
+            const inputIndex = additionalStartIndex + (i - 1);
+            const input = this.inputs[inputIndex];
+            if (input && input.link) {
+                const link = graph.links instanceof Map ? graph.links.get(input.link) : graph.links?.[input.link];
+                if (link) {
+                    const sourceNode = graph.getNodeById(link.origin_id);
+                    if (sourceNode && sourceNode.outputs && sourceNode.outputs[link.origin_slot]) {
+                        const outputType = sourceNode.outputs[link.origin_slot].type;
+                        this.slotTypes[i] = outputType;
                         
                         // If this slot receives a FRIENDLY_PIPE, track its source
                         if (outputType === "FRIENDLY_PIPE") {
@@ -1382,6 +1462,38 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         }
     };
     
+    // Get combined slot types (including overrides from exposed incoming slot connections)
+    nodeType.prototype.getCombinedSlotTypes = function() {
+        // Make sure our slot types are up to date
+        this.updateSlotTypes();
+        
+        const combined = {};
+        
+        // Copy incoming slot types from upstream pipe
+        if (this.incomingSlotTypes) {
+            for (const [key, value] of Object.entries(this.incomingSlotTypes)) {
+                combined[key] = value;
+            }
+        }
+        
+        // Override with types from exposed incoming slot connections
+        if (this.incomingSlotUpdates) {
+            for (const [key, update] of Object.entries(this.incomingSlotUpdates)) {
+                combined[key] = update.type;
+            }
+        }
+        
+        // Add our additional slot types with offset indices
+        for (let i = 1; i <= this.slotCount; i++) {
+            const newIndex = this.incomingSlotCount + i;
+            if (this.slotTypes[i]) {
+                combined[newIndex] = this.slotTypes[i];
+            }
+        }
+        
+        return combined;
+    };
+    
     // Handle serialization
     const origOnSerialize = nodeType.prototype.onSerialize;
     nodeType.prototype.onSerialize = function(o) {
@@ -1391,6 +1503,8 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         o.slotCount = this.slotCount;
         o.slotNames = this.slotNames;
         o.slotTypes = this.slotTypes;
+        o.incomingSlotCount = this.incomingSlotCount;
+        o.exposedIncomingSlots = this.exposedIncomingSlots;
     };
     
     // Handle deserialization
@@ -1408,6 +1522,12 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         if (o.slotTypes) {
             this.slotTypes = o.slotTypes;
         }
+        if (o.incomingSlotCount !== undefined) {
+            this.incomingSlotCount = o.incomingSlotCount;
+        }
+        if (o.exposedIncomingSlots) {
+            this.exposedIncomingSlots = o.exposedIncomingSlots;
+        }
         
         if (o.slotCount !== undefined && o.slotCount > 1) {
             // We already have 1 slot from onNodeCreated
@@ -1417,26 +1537,8 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
                 const name = this.slotNames[i] || ("slot_" + i);
                 this.slotNames[i] = name;
                 
-                // Add input if needed (offset by 1 for pipe input)
-                if (!this.inputs || this.inputs.length < i + 1) {
-                    this.addInput("slot_" + i, "*");
-                }
-                if (this.inputs && this.inputs[i]) {
-                    this.inputs[i].label = name;
-                }
-                
                 // Add name widget
                 this.addSlotNameWidget(i);
-            }
-        }
-        
-        // Update all input labels
-        if (this.inputs) {
-            for (let i = 1; i < this.inputs.length; i++) {
-                const slotNum = i;
-                if (this.slotNames[slotNum]) {
-                    this.inputs[i].label = this.slotNames[slotNum];
-                }
             }
         }
         
@@ -1451,7 +1553,7 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         
         this.updateSize();
         
-        // Sync with source after configure
+        // Sync with source after configure - this will rebuild inputs properly
         setTimeout(() => {
             this.syncWithSource();
         }, 100);
@@ -1472,6 +1574,10 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
             const slotNamesWidget = this.widgets.find(w => w.name === "slot_names");
             if (slotNamesWidget) {
                 slotNamesWidget.value = JSON.stringify(this.slotNames);
+            }
+            const incomingSlotCountWidget = this.widgets.find(w => w.name === "incoming_slot_count");
+            if (incomingSlotCountWidget) {
+                incomingSlotCountWidget.value = this.incomingSlotCount;
             }
         }
     };
