@@ -42,6 +42,12 @@ class FriendlyPipeEdit:
     def execute(self, pipe, slot_count=0, slot_names="{}", incoming_slot_count=0, **kwargs):
         import json
         
+        # Convert slot_count and incoming_slot_count to int if they're strings
+        if isinstance(slot_count, str):
+            slot_count = int(slot_count) if slot_count else 0
+        if isinstance(incoming_slot_count, str):
+            incoming_slot_count = int(incoming_slot_count) if incoming_slot_count else 0
+        
         # Debug: print what we received
         print(f"[FriendlyPipeEdit] execute called")
         print(f"[FriendlyPipeEdit] slot_count={slot_count}, incoming_slot_count={incoming_slot_count}")
