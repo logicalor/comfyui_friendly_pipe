@@ -1055,8 +1055,9 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         const node = this;
         
         // Initialize slot count for additional slots (not including incoming pipe slots)
-        this.slotCount = 1;
-        this.slotNames = { 1: "slot_1" };
+        // Start with 0 - adding new slots is optional
+        this.slotCount = 0;
+        this.slotNames = {};
         this.slotTypes = {};
         this.slotSources = {};
         
@@ -1069,19 +1070,10 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         // Track which incoming slots are exposed as inputs
         this.exposedIncomingSlots = {};
         
-        // Remove all optional inputs except the first one
-        // Keep the pipe input (index 0) and first slot input (index 1)
-        while (this.inputs && this.inputs.length > 2) {
+        // Remove all optional inputs - keep only the pipe input (index 0)
+        while (this.inputs && this.inputs.length > 1) {
             this.removeInput(this.inputs.length - 1);
         }
-        
-        // Rename first additional slot
-        if (this.inputs && this.inputs.length > 1) {
-            this.inputs[1].label = this.slotNames[1];
-        }
-        
-        // Add name widget for slot 1 first (above buttons)
-        this.addSlotNameWidget(1);
         
         // Add control buttons
         const addWidget = this.addWidget("button", "➕ Add Slot", null, () => {
@@ -1606,10 +1598,10 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
             this.exposedIncomingSlots = o.exposedIncomingSlots;
         }
         
-        if (o.slotCount !== undefined && o.slotCount > 1) {
-            // We already have 1 slot from onNodeCreated
-            // Add the remaining slots
-            for (let i = 2; i <= o.slotCount; i++) {
+        if (o.slotCount !== undefined && o.slotCount > 0) {
+            // We start with 0 slots from onNodeCreated
+            // Add all the slots
+            for (let i = 1; i <= o.slotCount; i++) {
                 this.slotCount = i;
                 const name = this.slotNames[i] || ("slot_" + i);
                 this.slotNames[i] = name;

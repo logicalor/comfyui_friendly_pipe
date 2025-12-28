@@ -17,7 +17,7 @@ class FriendlyPipeEdit:
             },
             "optional": {},
             "hidden": {
-                "slot_count": ("INT", {"default": 1}),
+                "slot_count": ("INT", {"default": 0}),
                 "slot_names": ("STRING", {"default": "{}"}),
                 "incoming_slot_count": ("INT", {"default": 0}),
             }
@@ -39,7 +39,7 @@ class FriendlyPipeEdit:
     FUNCTION = "execute"
     CATEGORY = "utils/pipe"
     
-    def execute(self, pipe, slot_count=1, slot_names="{}", incoming_slot_count=0, **kwargs):
+    def execute(self, pipe, slot_count=0, slot_names="{}", incoming_slot_count=0, **kwargs):
         import json
         
         # Parse slot names from JSON string
