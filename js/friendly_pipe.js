@@ -1258,6 +1258,10 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
             sourceNode = graph.getNodeById(link.origin_id);
         }
         
+        console.log("[FriendlyPipeEdit] syncWithSource - sourceNode:", sourceNode?.type, sourceNode?.id);
+        console.log("[FriendlyPipeEdit] syncWithSource - sourceNode.slotCount:", sourceNode?.slotCount);
+        console.log("[FriendlyPipeEdit] syncWithSource - sourceNode.slotNames:", JSON.stringify(sourceNode?.slotNames));
+        
         if (!sourceNode) return;
         
         // Special case: if connected to a FriendlyPipeOut's output slot, check if that slot
@@ -1620,6 +1624,7 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         o.slotNames = this.slotNames;
         o.slotTypes = this.slotTypes;
         o.incomingSlotCount = this.incomingSlotCount;
+        o.incomingSlotNames = this.incomingSlotNames;
         o.exposedIncomingSlots = this.exposedIncomingSlots;
     };
     
@@ -1640,6 +1645,9 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         }
         if (o.incomingSlotCount !== undefined) {
             this.incomingSlotCount = o.incomingSlotCount;
+        }
+        if (o.incomingSlotNames) {
+            this.incomingSlotNames = o.incomingSlotNames;
         }
         if (o.exposedIncomingSlots) {
             this.exposedIncomingSlots = o.exposedIncomingSlots;
