@@ -45,6 +45,7 @@ class FriendlyPipeEdit:
         # Debug: print what we received
         print(f"[FriendlyPipeEdit] execute called")
         print(f"[FriendlyPipeEdit] slot_count={slot_count}, incoming_slot_count={incoming_slot_count}")
+        print(f"[FriendlyPipeEdit] pipe data: {pipe}")
         print(f"[FriendlyPipeEdit] kwargs keys: {list(kwargs.keys())}")
         print(f"[FriendlyPipeEdit] kwargs: {kwargs}")
         
