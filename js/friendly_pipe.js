@@ -1653,11 +1653,10 @@ function setupFriendlyPipeEdit(nodeType, nodeData, app) {
         this.updateSize();
         
         // Sync with source after configure - use multiple attempts for robustness
-        const node = this;
         const attemptSync = (attempt) => {
             if (attempt > 3) return;
             setTimeout(() => {
-                node.syncWithSource();
+                this.syncWithSource();
             }, attempt * 200);
         };
         attemptSync(1);
